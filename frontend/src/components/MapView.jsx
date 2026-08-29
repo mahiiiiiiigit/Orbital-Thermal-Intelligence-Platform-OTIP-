@@ -70,7 +70,21 @@ export function MapView({
 
     mapInstanceRef.current = map;
 
+    // Invalidate size once DOM layout completes
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 150);
+
+    let resizeObserver = null;
+    if (window.ResizeObserver && mapContainerRef.current) {
+      resizeObserver = new ResizeObserver(() => {
+        map.invalidateSize();
+      });
+      resizeObserver.observe(mapContainerRef.current);
+    }
+
     return () => {
+      if (resizeObserver) resizeObserver.disconnect();
       map.remove();
       mapInstanceRef.current = null;
     };
