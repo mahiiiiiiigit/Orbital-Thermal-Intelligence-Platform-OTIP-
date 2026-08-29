@@ -63,6 +63,16 @@ def build_persistent_clusters(hotspots: List[Dict[str, Any]]) -> List[Dict[str, 
             records[0],
         )
 
+        # Determine risk level tier based on standardized thresholds
+        if mean_risk >= 75.0 or dominant_class == "INDUSTRIAL_FIRE":
+            cluster_risk_level = "CRITICAL"
+        elif mean_risk >= 50.0:
+            cluster_risk_level = "HIGH"
+        elif mean_risk >= 25.0:
+            cluster_risk_level = "MEDIUM"
+        else:
+            cluster_risk_level = "LOW"
+
         clusters.append(
             {
                 "cluster_id": clean_id,
@@ -84,7 +94,9 @@ def build_persistent_clusters(hotspots: List[Dict[str, Any]]) -> List[Dict[str, 
                 "mean_frp": mean_frp,
                 "peak_frp": peak_frp,
                 "risk_score": mean_risk,
-                "risk_level": "critical" if (mean_risk >= 65 or peak_frp > 100 or dominant_class == "INDUSTRIAL_FIRE") else ("high" if mean_risk >= 50 else "medium"),
+                "risk_level": cluster_risk_level,
+                "risk_breakdown": dominant_record.get("risk_breakdown", {}),
+                "risk_explanation": dominant_record.get("risk_explanation", ""),
             }
         )
 

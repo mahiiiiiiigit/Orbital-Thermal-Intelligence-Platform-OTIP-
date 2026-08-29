@@ -57,6 +57,10 @@ def detect_anomalies(hotspots: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                     "baseline_mean_frp": round(mean(float(r["frp"]) for r in records), 1),
                     "baseline_std_dev_frp": round(pstdev(float(r["frp"]) for r in records), 1) if len(records) > 1 else 0.0,
                     "z_score": 4.5,
+                    "risk_score": peak_fire.get("risk_score", 95.0),
+                    "risk_level": "CRITICAL",
+                    "risk_breakdown": peak_fire.get("risk_breakdown", {}),
+                    "risk_explanation": peak_fire.get("risk_explanation", "Critical risk due to extreme industrial fire excursion."),
                     "message": f"Critical industrial fire excursion detected: {peak_fire['frp']} MW FRP.",
                     "recommendation": "Dispatch emergency response and confirm whether flare system or structural fire.",
                 }
@@ -97,6 +101,10 @@ def detect_anomalies(hotspots: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                             "baseline_mean_frp": round(baseline_mean, 2),
                             "baseline_std_dev_frp": round(baseline_std_dev, 2),
                             "z_score": round(z_score, 2),
+                            "risk_score": current_record.get("risk_score", 85.0),
+                            "risk_level": "CRITICAL",
+                            "risk_breakdown": current_record.get("risk_breakdown", {}),
+                            "risk_explanation": current_record.get("risk_explanation", f"Critical risk due to +{round(z_score, 1)}σ statistical excursion above baseline."),
                             "message": f"FRP is {round(z_score, 1)} standard deviations above baseline ({round(baseline_mean, 1)} MW).",
                             "recommendation": "Dispatch on-site inspection and confirm whether the flare is controlled or escalating.",
                         }
@@ -126,6 +134,10 @@ def detect_anomalies(hotspots: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                     "baseline_mean_frp": round(float(peak_record["frp"]) * 0.4, 2),
                     "baseline_std_dev_frp": 12.0,
                     "z_score": 3.2,
+                    "risk_score": peak_record.get("risk_score", 80.0),
+                    "risk_level": "HIGH",
+                    "risk_breakdown": peak_record.get("risk_breakdown", {}),
+                    "risk_explanation": peak_record.get("risk_explanation", "High risk due to extreme radiative intensity."),
                     "message": f"High-intensity thermal plume detected ({peak_record['frp']} MW FRP).",
                     "recommendation": "Verify operational telemetry with facility operator.",
                 }

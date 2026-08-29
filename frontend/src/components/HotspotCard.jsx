@@ -18,6 +18,8 @@ import {
   X,
   AlertTriangle,
   LifeBuoy,
+  Gauge,
+  Layers,
 } from 'lucide-react';
 import { fetchEmergencyRoute, fetchNearestSafetyResources, getDossierDownloadUrl } from '../services/api';
 
@@ -32,16 +34,20 @@ export function HotspotCard({
   const [loadingRoute, setLoadingRoute] = useState(false);
   const [routeError, setRouteError] = useState(null);
 
+  // Smart Risk Breakdown dropdown state
+  const [showRiskBreakdown, setShowRiskBreakdown] = useState(false);
+
   // Contextual Emergency Response Section State (CLOSED by default)
   const [isOpenRespond, setIsOpenRespond] = useState(false);
   const [showEvacSection, setShowEvacSection] = useState(false);
   const [triageData, setTriageData] = useState(null);
   const [loadingTriage, setLoadingTriage] = useState(false);
 
-  // Reset respond state when selected hotspot changes
+  // Reset states when selected hotspot changes
   useEffect(() => {
     setIsOpenRespond(false);
     setShowEvacSection(false);
+    setShowRiskBreakdown(false);
     setTriageData(null);
   }, [hotspot?.id || hotspot?.latitude]);
 
@@ -74,23 +80,29 @@ export function HotspotCard({
     ? hotspot.reasons
     : [hotspot.explanation || 'Thermal signature evaluated by decision engine.'];
 
+  // Smart Risk Score fields
+  const riskScore = hotspot.risk_score != null ? hotspot.risk_score : 25.0;
+  const riskLevel = hotspot.risk_level ? String(hotspot.risk_level).toUpperCase() : (riskScore >= 75 ? 'CRITICAL' : (riskScore >= 50 ? 'HIGH' : (riskScore >= 25 ? 'MEDIUM' : 'LOW')));
+  const riskBreakdown = hotspot.risk_breakdown || {};
+  const riskExplanation = hotspot.risk_explanation || `${riskLevel} risk event evaluated by multi-factor thermal intelligence model.`;
+
   // Identify Critical Thermal Spikes / Industrial Excursions
   const isCriticalSpike =
     hotspot.classification === 'INDUSTRIAL_FIRE' ||
     Boolean(hotspot.z_score && hotspot.z_score >= 3.0) ||
-    Boolean(hotspot.severity === 'CRITICAL');
+    riskLevel === 'CRITICAL';
 
   // Identify Wildfires with high or critical risk
   const isWildfireHighRisk =
     hotspot.classification === 'WILDFIRE' &&
-    (hotspot.risk_level === 'high' || hotspot.risk_level === 'critical' || hotspot.fire_danger_level === 'HIGH' || hotspot.fire_danger_level === 'EXTREME' || hotspot.large_forest_fire);
+    (riskLevel === 'HIGH' || riskLevel === 'CRITICAL' || hotspot.fire_danger_level === 'HIGH' || hotspot.fire_danger_level === 'EXTREME' || hotspot.large_forest_fire);
 
   // General dangerous event condition where [RESPOND] action is available
   const canRespond =
     isCriticalSpike ||
     isWildfireHighRisk ||
     (hotspot.classification === 'GAS_FLARE' && hotspot.frp >= 40) ||
-    (hotspot.risk_score && hotspot.risk_score >= 55);
+    riskScore >= 50;
 
   const nearest = triageData?.nearest_resources || {};
   const sop = triageData?.recommended_response || {};
@@ -158,6 +170,14 @@ export function HotspotCard({
       const list = Object.values(nearest).filter(Boolean);
       onShowTemporaryResources(list);
     }
+  };
+
+  // Color gradient for risk score progress bar
+  const getRiskColor = (score) => {
+    if (score >= 75) return '#ef4444'; // red
+    if (score >= 50) return '#f97316'; // orange
+    if (score >= 25) return '#eab308'; // yellow
+    return '#10b981'; // green
   };
 
   return (
@@ -236,7 +256,71 @@ export function HotspotCard({
         </div>
       )}
 
-      {/* 4. Telemetry Grid (Radiance FRP, Brightness Temp, Status, Data Source) */}
+      {/* 4. Smart Explainable Risk Score Card */}
+      <div className="bg-slate-50 dark:bg-dark-900/85 border border-slate-200 dark:border-slate-800/80 rounded-xl p-3 space-y-2 text-xs shadow-sm">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <Gauge className="w-3.5 h-3.5 text-sky-500" />
+            <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+              Smart Risk Score
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="font-mono font-extrabold text-sm" style={{ color: getRiskColor(riskScore) }}>
+              {riskScore} <span className="text-[10px] text-slate-400 font-normal">/ 100</span>
+            </span>
+            <RiskBadge level={riskLevel} />
+          </div>
+        </div>
+
+        {/* Visual Progress Bar */}
+        <div className="w-full bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-500"
+            style={{
+              width: `${Math.min(100, Math.max(5, riskScore))}%`,
+              backgroundColor: getRiskColor(riskScore),
+            }}
+          />
+        </div>
+
+        {/* Short Human-Readable Explanation */}
+        <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed pt-0.5">
+          {riskExplanation}
+        </p>
+
+        {/* Contributing Factors Breakdown Toggle */}
+        {Object.keys(riskBreakdown).length > 0 && (
+          <div className="pt-1 border-t border-slate-200 dark:border-slate-800/60">
+            <button
+              type="button"
+              onClick={() => setShowRiskBreakdown(!showRiskBreakdown)}
+              className="text-[10.5px] font-semibold text-slate-500 dark:text-slate-400 hover:text-sky-500 flex items-center justify-between w-full transition-colors"
+            >
+              <span className="flex items-center gap-1">
+                <Layers className="w-3 h-3 text-sky-500" />
+                <span>Contributing Factor Points</span>
+              </span>
+              <span className="font-mono text-[9px]">
+                {showRiskBreakdown ? '▲ Hide' : '▼ Breakdown'}
+              </span>
+            </button>
+
+            {showRiskBreakdown && (
+              <div className="mt-2 bg-white dark:bg-dark-850 rounded-lg p-2 border border-slate-200 dark:border-slate-800/70 space-y-1 animate-fadeIn">
+                {Object.entries(riskBreakdown).map(([factor, pts]) => (
+                  <div key={factor} className="flex justify-between items-center text-[10.5px]">
+                    <span className="text-slate-600 dark:text-slate-400">{factor}:</span>
+                    <span className="font-mono font-bold text-sky-600 dark:text-sky-400">+{pts}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 5. Telemetry Grid (Radiance FRP, Brightness Temp, Status, Data Source) */}
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div className="bg-slate-50 dark:bg-dark-900/80 border border-slate-200 dark:border-slate-800/60 rounded-lg p-2">
           <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Radiance (FRP)</span>
@@ -262,7 +346,7 @@ export function HotspotCard({
         </div>
       </div>
 
-      {/* 5. Forest Context / Land Attribution Card */}
+      {/* 6. Forest Context / Land Attribution Card */}
       <div className="bg-slate-50 dark:bg-dark-900/80 border border-slate-200 dark:border-slate-800/60 rounded-lg p-2.5 text-xs space-y-1">
         <div className="flex justify-between">
           <span className="text-slate-500 dark:text-slate-400">Context / Eco-Zone:</span>
@@ -276,16 +360,9 @@ export function HotspotCard({
             <span className="font-mono text-emerald-600 dark:text-emerald-400">{hotspot.district} ({hotspot.state})</span>
           </div>
         )}
-        <div className="flex justify-between items-center pt-1 border-t border-slate-200 dark:border-slate-800/60">
-          <span className="text-slate-500 dark:text-slate-400">Wildfire Risk Index:</span>
-          <div className="flex items-center gap-1.5">
-            <span className="font-mono font-bold text-xs text-amber-600 dark:text-amber-300">{hotspot.risk_score || 35.0} / 100</span>
-            <RiskBadge level={hotspot.risk_level || 'medium'} />
-          </div>
-        </div>
       </div>
 
-      {/* 6. Emergency Dispatch Route (Always available on all hotspots) */}
+      {/* 7. Emergency Dispatch Route (Always available on all hotspots) */}
       <div className="bg-slate-100 dark:bg-dark-900/90 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1">
@@ -345,7 +422,7 @@ export function HotspotCard({
         {routeError && <p className="text-[11px] text-red-500 dark:text-red-400">{routeError}</p>}
       </div>
 
-      {/* 7. [RESPOND] Action Button (Shown for High-Risk / Critical / Wildfire events) */}
+      {/* 8. [RESPOND] Action Button (Shown for High-Risk / Critical / Wildfire events) */}
       {canRespond && (
         <div className="border-t border-slate-200 dark:border-slate-800 pt-2.5 space-y-2">
           <button
@@ -525,7 +602,7 @@ export function HotspotCard({
         </div>
       )}
 
-      {/* 8. Why Classified? Decision Reasoning Card */}
+      {/* 9. Why Classified? Decision Reasoning Card */}
       <div className="bg-sky-50 dark:bg-slate-900/90 border border-sky-200 dark:border-sky-950/80 rounded-lg p-3 space-y-1.5">
         <div className="flex items-center gap-1 text-[11px] font-bold text-sky-700 dark:text-sky-400 uppercase tracking-wider">
           <CheckCircle2 className="w-3.5 h-3.5" />

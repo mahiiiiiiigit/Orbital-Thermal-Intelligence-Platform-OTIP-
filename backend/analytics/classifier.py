@@ -41,38 +41,158 @@ def _get_source_identifier(hotspot: Dict[str, Any]) -> str:
     return f"grid:{lat}:{lon}"
 
 
+def calculate_smart_risk_score(
+    hotspot: Dict[str, Any],
+    active_days: int,
+    classification: str,
+    z_score: Optional[float] = None,
+) -> Tuple[float, str, Dict[str, float], str]:
+    """
+    Computes an explainable, deterministic 0-100 Smart Risk Score,
+    its risk level tier, contributing factor point breakdown, and human summary.
+
+    Tiers:
+      0 - 24   LOW
+      25 - 49  MEDIUM
+      50 - 74  HIGH
+      75 - 100 CRITICAL
+    """
+    frp = float(hotspot.get("frp") or 0.0)
+    conf = str(hotspot.get("confidence") or "nominal").lower()
+    dist_facility_m = hotspot.get("distance_to_facility_m")
+    facility_name = hotspot.get("facility_name")
+    fsi_danger = str(hotspot.get("fire_danger_level") or "").upper()
+    is_large_forest_fire = bool(hotspot.get("large_forest_fire"))
+    land_context = str(hotspot.get("forest_type") or hotspot.get("facility_category") or hotspot.get("land_context") or "").lower()
+
+    breakdown: Dict[str, float] = {}
+
+    # 1. Classification Base Severity (Max 30 pts)
+    base_points = {
+        "INDUSTRIAL_FIRE": 30.0,
+        "WILDFIRE": 22.0,
+        "GAS_FLARE": 15.0,
+        "PERSISTENT_INDUSTRIAL": 12.0,
+        "MINING_ACTIVITY": 12.0,
+        "UNCLASSIFIED": 8.0,
+        "AGRICULTURAL_BURNING": 6.0,
+    }
+    cls_pts = base_points.get(classification, 8.0)
+    breakdown["Classification severity"] = cls_pts
+
+    # 2. Thermal Intensity / FRP Component (Max 25 pts)
+    if frp > 80.0:
+        frp_pts = 25.0
+    elif frp > 30.0:
+        frp_pts = 18.0
+    elif frp > 10.0:
+        frp_pts = 12.0
+    elif frp > 2.0:
+        frp_pts = 6.0
+    else:
+        frp_pts = 2.0
+    breakdown["FRP intensity"] = frp_pts
+
+    # 3. Statistical Anomaly / Z-Score Component (Max 20 pts)
+    effective_z = z_score if z_score is not None else float(hotspot.get("z_score") or 0.0)
+    if classification == "INDUSTRIAL_FIRE" and effective_z < 3.0:
+        effective_z = 4.5  # Industrial fire is inherently anomalous
+
+    if effective_z >= 4.0:
+        anomaly_pts = 20.0
+    elif effective_z >= 3.0:
+        anomaly_pts = 15.0
+    elif effective_z >= 2.0:
+        anomaly_pts = 10.0
+    elif effective_z >= 1.0:
+        anomaly_pts = 5.0
+    else:
+        anomaly_pts = 0.0
+    if anomaly_pts > 0:
+        breakdown["FRP anomaly"] = anomaly_pts
+
+    # 4. Critical Infrastructure & Forest Proximity (Max 15 pts)
+    if dist_facility_m is not None and dist_facility_m <= 1000.0:
+        prox_pts = 15.0
+        breakdown["Facility proximity"] = prox_pts
+    elif dist_facility_m is not None and dist_facility_m <= 3000.0:
+        prox_pts = 10.0
+        breakdown["Facility proximity"] = prox_pts
+    elif "forest" in land_context or "wild" in land_context or classification == "WILDFIRE":
+        prox_pts = 12.0
+        breakdown["Forest eco-zone"] = prox_pts
+    elif facility_name:
+        prox_pts = 10.0
+        breakdown["Facility proximity"] = prox_pts
+    else:
+        prox_pts = 2.0
+        breakdown["Rural open-land"] = prox_pts
+
+    # 5. FSI Fire Danger Rating & Wildfire Spread (Max 10 pts)
+    if is_large_forest_fire or fsi_danger in ("EXTREME", "VERY HIGH"):
+        fsi_pts = 10.0
+        breakdown["FSI fire danger"] = fsi_pts
+    elif fsi_danger == "HIGH":
+        fsi_pts = 6.0
+        breakdown["FSI fire danger"] = fsi_pts
+    elif fsi_danger == "MODERATE":
+        fsi_pts = 3.0
+        breakdown["FSI fire danger"] = fsi_pts
+    else:
+        fsi_pts = 0.0
+
+    # 6. Persistence & Satellite Confidence (Max 10 pts)
+    pers_pts = round(min(6.0, active_days * 1.5), 1)
+    if pers_pts > 0:
+        breakdown["Persistence"] = pers_pts
+
+    conf_pts = 4.0 if conf in ("high", "h") else (2.0 if conf in ("nominal", "n") else 0.0)
+    breakdown["Satellite confidence"] = conf_pts
+
+    # Total Sum clamped to [0, 100]
+    total_score = round(min(100.0, max(0.0, sum(breakdown.values()))), 1)
+
+    # Determine Tier (0-24: LOW, 25-49: MEDIUM, 50-74: HIGH, 75-100: CRITICAL)
+    if total_score >= 75.0:
+        risk_level = "CRITICAL"
+    elif total_score >= 50.0:
+        risk_level = "HIGH"
+    elif total_score >= 25.0:
+        risk_level = "MEDIUM"
+    else:
+        risk_level = "LOW"
+
+    # Human-readable explainable explanation summary
+    reasons_summary = []
+    if effective_z >= 3.0:
+        reasons_summary.append("thermal output is significantly above historical baseline (+{:.1f}σ)".format(effective_z))
+    if frp > 50.0:
+        reasons_summary.append("high radiative energy ({:.1f} MW)".format(frp))
+    if dist_facility_m is not None and dist_facility_m <= 1000.0:
+        reasons_summary.append("event is close to critical industrial infrastructure")
+    elif is_large_forest_fire or fsi_danger in ("EXTREME", "VERY HIGH"):
+        reasons_summary.append("located in high-danger forest zone with active spread")
+    elif classification == "AGRICULTURAL_BURNING":
+        reasons_summary.append("routine seasonal crop residue combustion with limited spatial risk")
+    elif classification in ("PERSISTENT_INDUSTRIAL", "GAS_FLARE"):
+        reasons_summary.append("consistent with ongoing industrial baseline operations")
+
+    if reasons_summary:
+        explanation = f"{risk_level.capitalize()} risk because {', and '.join(reasons_summary)}."
+    else:
+        explanation = f"{risk_level.capitalize()} risk event evaluated by multi-factor thermal intelligence model."
+
+    return total_score, risk_level, breakdown, explanation
+
+
 def calculate_risk_score(
     hotspot: Dict[str, Any],
     active_days: int,
     classification: str,
 ) -> float:
-    """
-    Calculates an explainable risk score from 0.0 to 100.0 based on:
-    - Classification taxonomy severity
-    - Fire Radiative Power (FRP) intensity
-    - Temporal persistence
-    - Satellite detection confidence
-    """
-    frp = float(hotspot.get("frp") or 0.0)
-    conf = str(hotspot.get("confidence") or "nominal").lower()
-
-    base_scores = {
-        "INDUSTRIAL_FIRE": 75.0,
-        "WILDFIRE": 55.0,
-        "PERSISTENT_INDUSTRIAL": 40.0,
-        "MINING_ACTIVITY": 35.0,
-        "GAS_FLARE": 30.0,
-        "AGRICULTURAL_BURNING": 20.0,
-        "UNCLASSIFIED": 25.0,
-    }
-    base = base_scores.get(classification, 25.0)
-
-    frp_component = min(25.0, frp * 0.3)
-    persistence_component = min(15.0, active_days * 2.5)
-    confidence_weight = 10.0 if conf in ("high", "h") else (6.0 if conf in ("nominal", "n") else 2.0)
-
-    total = base + frp_component + persistence_component + confidence_weight
-    return round(min(100.0, max(0.0, total)), 1)
+    """Legacy helper returning scalar risk score."""
+    score, _, _, _ = calculate_smart_risk_score(hotspot, active_days, classification)
+    return score
 
 
 def _classify_single_hotspot(
@@ -339,24 +459,22 @@ def classify_hotspots(hotspots: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             z_score=z_score,
         )
 
-        risk_score = calculate_risk_score(hotspot, active_days, classification)
+        risk_score, risk_level, risk_breakdown, risk_explanation = calculate_smart_risk_score(
+            hotspot=hotspot,
+            active_days=active_days,
+            classification=classification,
+            z_score=z_score,
+        )
 
-        # Map risk level and inspection priority
-        if classification == "INDUSTRIAL_FIRE":
-            risk_level = "critical"
+        # Map inspection priority
+        if risk_level == "CRITICAL":
             inspection_priority = "immediate"
-        elif classification in ("WILDFIRE", "PERSISTENT_INDUSTRIAL"):
-            risk_level = "critical" if risk_score >= 65 else "high"
-            inspection_priority = "immediate" if risk_score >= 70 else "high"
-        elif classification in ("GAS_FLARE", "MINING_ACTIVITY"):
-            risk_level = "high" if risk_score >= 60 else "medium"
-            inspection_priority = "high" if risk_score >= 65 else "routine"
-        elif classification == "AGRICULTURAL_BURNING":
-            risk_level = "medium" if risk_score >= 45 else "low"
-            inspection_priority = "watch" if risk_score >= 45 else "routine"
-        else:
-            risk_level = "medium"
+        elif risk_level == "HIGH":
+            inspection_priority = "high"
+        elif risk_level == "MEDIUM":
             inspection_priority = "watch"
+        else:
+            inspection_priority = "routine"
 
         classified_hotspots.append(
             {
@@ -367,7 +485,9 @@ def classify_hotspots(hotspots: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 "explanation": explanation,
                 "reasons": reasons,  # List of human-readable decision reasons
                 "risk_score": risk_score,
-                "risk_level": risk_level,
+                "risk_level": risk_level,  # LOW / MEDIUM / HIGH / CRITICAL
+                "risk_breakdown": risk_breakdown,
+                "risk_explanation": risk_explanation,
                 "inspection_priority": inspection_priority,
             }
         )
