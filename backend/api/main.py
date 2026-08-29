@@ -13,7 +13,10 @@ from backend.analytics.classifier import classify_hotspots
 from backend.analytics.clusters import build_persistent_clusters
 from backend.analytics.st_clustering import cluster_hotspots
 from backend.ingestion.demo_data import generate_hotspots
-from backend.ingestion.fsi_demo_data import generate_fsi_demo_data
+from backend.ingestion.fsi_demo_data import (
+    generate_fsi_demo_data,
+    generate_fsi_ffdr_grid,
+)
 from backend.ingestion.firms_client import (
     VALID_SOURCES,
     fetch_firms_hotspots,
@@ -370,6 +373,28 @@ def get_fsi_forest_fires(
         "alerts": alerts,
         "clusters": clusters,
     }
+
+
+@app.get("/api/v1/fsi/ffdr-grid")
+def get_fsi_ffdr_grid(
+    state: Optional[str] = Query(None, description="Filter grid by Indian state"),
+    risk_level: Optional[str] = Query(None, description="Filter grid by risk level (Extreme, Very High, High, Moderate, Low)"),
+):
+    """
+    Returns Forest Survey of India (FSI) 5km x 5km Forest Fire Danger Rating (FFDR) GeoJSON grid.
+    Categories: Extreme (Red), Very High (Red-Orange), High (Orange), Moderate (Yellow), Low (Green).
+    """
+    geojson = generate_fsi_ffdr_grid()
+    features = geojson.get("features", [])
+
+    if state:
+        features = [f for f in features if f["properties"].get("state", "").lower() == state.lower()]
+    if risk_level:
+        features = [f for f in features if f["properties"].get("risk_level", "").lower() == risk_level.lower()]
+
+    geojson["features"] = features
+    geojson["metadata"]["total_grids"] = len(features)
+    return geojson
 
 
 @app.get("/map", include_in_schema=False)

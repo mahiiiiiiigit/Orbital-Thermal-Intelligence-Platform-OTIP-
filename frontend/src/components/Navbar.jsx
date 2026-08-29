@@ -190,6 +190,18 @@ export function Navbar({
           >
             Hybrid
           </button>
+          <button
+            type="button"
+            onClick={() => onSelectMapMode('forest_risk')}
+            className={`px-3 py-1 rounded text-xs font-semibold flex items-center gap-1 transition-all ${
+              mapMode === 'forest_risk'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <Trees className="w-3.5 h-3.5" />
+            <span>Forest Risk</span>
+          </button>
         </div>
 
         {/* Dark / Light Mode Toggle Button */}

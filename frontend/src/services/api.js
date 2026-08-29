@@ -46,6 +46,21 @@ export async function fetchFsiForestFires({
   return res.json();
 }
 
+export async function fetchFsiFfdrGrid({
+  state = null,
+  riskLevel = null,
+} = {}) {
+  const params = new URLSearchParams();
+  if (state) params.set('state', state);
+  if (riskLevel) params.set('risk_level', riskLevel);
+
+  const res = await fetch(`/api/v1/fsi/ffdr-grid?${params.toString()}`);
+  if (!res.ok) {
+    throw new Error(`FSI FFDR Grid error (${res.status}): ${res.statusText}`);
+  }
+  return res.json();
+}
+
 export async function fetchClusters({ mode = 'auto', source = 'VIIRS_SNPP_NRT' } = {}) {
   const res = await fetch(`/api/v1/clusters/persistent?mode=${mode}&source=${source}`);
   if (!res.ok) {

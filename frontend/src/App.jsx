@@ -4,7 +4,7 @@ import { Sidebar } from './components/Sidebar';
 import { MapView } from './components/MapView';
 import { TimelineSlider } from './components/TimelineSlider';
 import { ThermalLegend } from './components/ThermalLegend';
-import { fetchHotspots, fetchClusters, fetchAlerts, fetchFsiForestFires } from './services/api';
+import { fetchHotspots, fetchClusters, fetchAlerts, fetchFsiForestFires, fetchFsiFfdrGrid } from './services/api';
 import { REGIONS } from './constants/taxonomy';
 import { AlertTriangle, Trees } from 'lucide-react';
 
@@ -25,6 +25,7 @@ export function App() {
   const [allHotspots, setAllHotspots] = useState([]);
   const [clusters, setClusters] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [ffdrGrid, setFfdrGrid] = useState(null);
 
   const [timelineIndex, setTimelineIndex] = useState(0);
   const [filterClass, setFilterClass] = useState('all');
@@ -51,6 +52,13 @@ export function App() {
   const handleSelectMapMode = useCallback((newMode) => {
     setMapMode(newMode);
     localStorage.setItem('thermalwatch_map_mode', newMode);
+  }, []);
+
+  // Load FSI FFDR Grid on startup
+  useEffect(() => {
+    fetchFsiFfdrGrid()
+      .then((grid) => setFfdrGrid(grid))
+      .catch((err) => console.warn('Could not load FFDR grid:', err));
   }, []);
 
   // Fetch telemetry from backend
@@ -205,6 +213,7 @@ export function App() {
             hotspots={visibleHotspots}
             clusters={clusters}
             alerts={alerts}
+            ffdrGrid={ffdrGrid}
             mapMode={mapMode}
             theme={theme}
             regionConfig={REGIONS[selectedRegion]}
@@ -232,10 +241,10 @@ export function App() {
             </div>
           )}
 
-          {/* Floating Thermal Intensity Legend (Thermal & Hybrid modes) */}
+          {/* Floating Intensity Legend (Thermal, Hybrid & Forest Risk modes) */}
           {mapMode !== 'standard' && (
             <div className="absolute bottom-6 right-6 z-[1000]">
-              <ThermalLegend />
+              <ThermalLegend mode={mapMode} />
             </div>
           )}
 

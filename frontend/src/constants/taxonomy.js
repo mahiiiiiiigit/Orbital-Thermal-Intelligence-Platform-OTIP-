@@ -24,6 +24,7 @@ export const REGIONS = {
   jamnagar: { name: 'Jamnagar Hub', bbox: '69.5,22.0,71.0,23.0', center: [22.47, 70.06], zoom: 9 },
   ncr: { name: 'NCR & Punjab', bbox: '75.0,28.0,78.5,31.5', center: [29.8, 76.8], zoom: 7 },
   steel: { name: 'Steel Belt', bbox: '83.5,21.0,87.2,24.5', center: [22.8, 85.5], zoom: 7 },
+  uttarakhand: { name: 'Himalayan Forest Belt', bbox: '77.0,29.0,81.0,31.5', center: [30.2, 79.2], zoom: 8 },
 };
 
 export const SENSORS = [
@@ -38,4 +39,26 @@ export const THERMAL_GRADIENT = {
   0.52: '#facc15', // Yellow: Moderate (25-50 MW)
   0.75: '#f97316', // Orange: High (50-80 MW)
   1.00: '#ef4444', // Red: Extreme (>80 MW)
+};
+
+// Forest Survey of India (FSI) Forest Fire Danger Rating (FFDR) Categories & Color Scales
+export const FFDR_CATEGORIES = [
+  { id: 'LOW', label: 'Low', color: '#22c55e', desc: 'Minimal risk of ignition or spread' },
+  { id: 'MODERATE', label: 'Moderate', color: '#eab308', desc: 'Moderate surface fire potential in dry litter' },
+  { id: 'HIGH', label: 'High', color: '#f97316', desc: 'Elevated fire weather index with rapid spread risk' },
+  { id: 'VERY_HIGH', label: 'Very High', color: '#ea580c', desc: 'Severe fire potential; pre-fire alert zone' },
+  { id: 'EXTREME', label: 'Extreme', color: '#dc2626', desc: 'Critical crown/canopy fire risk; urgent suppression readiness' },
+];
+
+export const FFDR_COLORS = {
+  LOW: '#22c55e',
+  MODERATE: '#eab308',
+  HIGH: '#f97316',
+  VERY_HIGH: '#ea580c',
+  EXTREME: '#dc2626',
+  Low: '#22c55e',
+  Moderate: '#eab308',
+  High: '#f97316',
+  'Very High': '#ea580c',
+  Extreme: '#dc2626',
 };

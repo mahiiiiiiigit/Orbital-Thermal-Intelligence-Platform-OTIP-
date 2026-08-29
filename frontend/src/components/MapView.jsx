@@ -2,13 +2,14 @@ import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.heat';
-import { TAXONOMY_COLORS, THERMAL_GRADIENT } from '../constants/taxonomy';
+import { TAXONOMY_COLORS, THERMAL_GRADIENT, FFDR_COLORS } from '../constants/taxonomy';
 
 export function MapView({
   hotspots = [],
   clusters = [],
   alerts = [],
-  mapMode = 'hybrid', // 'standard' | 'thermal' | 'hybrid'
+  ffdrGrid = null,
+  mapMode = 'hybrid', // 'standard' | 'thermal' | 'hybrid' | 'forest_risk'
   theme = 'dark',
   regionConfig,
   selectedHotspot,
@@ -23,6 +24,7 @@ export function MapView({
   const clustersLayerRef = useRef([]);
   const alertsLayerRef = useRef([]);
   const routeLayersRef = useRef([]);
+  const ffdrLayerRef = useRef(null);
   const heatLayerRef = useRef(null);
 
   // Initialize Map
@@ -60,7 +62,7 @@ export function MapView({
     const tileUrl = `https://basemaps.cartocdn.com/${tileStyle}/{z}/{x}/{y}.png?key=${cartoKey}`;
 
     const newTileLayer = L.tileLayer(tileUrl, {
-      attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; NASA FIRMS &copy; OpenRouteService',
+      attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; NASA FIRMS &copy; Forest Survey of India &copy; OpenRouteService',
       maxZoom: 19,
       subdomains: 'abcd',
     }).addTo(map);
@@ -93,12 +95,64 @@ export function MapView({
     alertsLayerRef.current.forEach((a) => map.removeLayer(a));
     alertsLayerRef.current = [];
 
+    if (ffdrLayerRef.current) {
+      map.removeLayer(ffdrLayerRef.current);
+      ffdrLayerRef.current = null;
+    }
+
     if (heatLayerRef.current) {
       map.removeLayer(heatLayerRef.current);
       heatLayerRef.current = null;
     }
 
-    // 2. Render Heatmap Layer (Thermal & Hybrid modes)
+    // 2. Render Forest Fire Danger Rating (FFDR) 5km Grid (Forest Risk Mode)
+    if (mapMode === 'forest_risk' && ffdrGrid && ffdrGrid.features) {
+      ffdrLayerRef.current = L.geoJSON(ffdrGrid, {
+        style: (feature) => {
+          const risk = feature.properties?.risk_level || 'Moderate';
+          const color = FFDR_COLORS[risk] || '#eab308';
+          return {
+            fillColor: color,
+            fillOpacity: 0.42,
+            weight: 1.5,
+            color: color,
+            dashArray: '3, 3',
+          };
+        },
+        onEachFeature: (feature, layer) => {
+          const p = feature.properties || {};
+          const risk = p.risk_level || 'Moderate';
+          const color = FFDR_COLORS[risk] || '#eab308';
+
+          layer.bindTooltip(
+            `<strong>${p.forest_division || 'Forest Division'}</strong><br/>FSI Danger: <span style="color:${color}; font-weight:bold;">${risk}</span>`,
+            { sticky: true, direction: 'top' }
+          );
+
+          const popupContent = `
+            <div style="font-family:system-ui, sans-serif; font-size:12px; line-height:1.45; min-width:250px; max-width:300px; color:#f8fafc;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:4px;">
+                <strong style="color:${color}; font-size:13px;">${risk.toUpperCase()} FIRE RISK</strong>
+                <span style="font-size:9px; font-weight:700; background:rgba(34,197,94,0.2); color:#4ade80; padding:2px 6px; border-radius:4px; border:1px solid rgba(34,197,94,0.4);">
+                  FSI FFDR GRID
+                </span>
+              </div>
+              <div style="margin-bottom:2px;"><strong>Forest Reserve:</strong> ${p.forest_name || 'Forest Area'}</div>
+              <div style="margin-bottom:2px;"><strong>Division:</strong> ${p.forest_division || 'Division'} (${p.state || 'India'})</div>
+              <div style="margin-bottom:2px;"><strong>Fire Weather Index:</strong> <span style="font-family:monospace; color:#fbbf24; font-weight:bold;">${p.fwi_score || 'N/A'}</span></div>
+              <div style="margin-bottom:4px; font-size:11px; color:#94a3b8;"><strong>Validity:</strong> ${p.validity_window || 'Weekly Pre-Fire Bulletin'}</div>
+              <div style="margin-top:6px; background:rgba(15,23,42,0.85); border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:6px 8px; font-size:10.5px; color:#cbd5e1;">
+                <strong style="display:block; color:#38bdf8; margin-bottom:2px;">Source: Forest Survey of India</strong>
+                <span>${p.context_note || 'Pre-fire vulnerability indicator (Not an active fire ignition without thermal detection).'}</span>
+              </div>
+            </div>
+          `;
+          layer.bindPopup(popupContent);
+        },
+      }).addTo(map);
+    }
+
+    // 3. Render Heatmap Layer (Thermal & Hybrid modes)
     if (mapMode === 'thermal' || mapMode === 'hybrid') {
       const heatPoints = hotspots.map((h) => {
         const weight = Math.min(1.0, Math.max(0.12, (h.frp || 5.0) / 80.0));
@@ -116,8 +170,8 @@ export function MapView({
       }
     }
 
-    // 3. Render Cluster Boundaries (Standard & Hybrid modes)
-    if (mapMode === 'standard' || mapMode === 'hybrid') {
+    // 4. Render Cluster Boundaries (Standard, Hybrid & Forest Risk modes)
+    if (mapMode === 'standard' || mapMode === 'hybrid' || mapMode === 'forest_risk') {
       clusters.forEach((cluster) => {
         const isFire = cluster.classification === 'INDUSTRIAL_FIRE';
         const color = isFire
@@ -143,8 +197,8 @@ export function MapView({
       });
     }
 
-    // 4. Render Hotspot Markers (Standard & Hybrid modes)
-    if (mapMode === 'standard' || mapMode === 'hybrid') {
+    // 5. Render Hotspot Markers (Standard, Hybrid & Forest Risk modes)
+    if (mapMode === 'standard' || mapMode === 'hybrid' || mapMode === 'forest_risk') {
       hotspots.forEach((hotspot) => {
         const isSpike = hotspot.classification === 'INDUSTRIAL_FIRE' || (hotspot.frp >= 90);
         const color = TAXONOMY_COLORS[hotspot.classification] || '#94a3b8';
@@ -193,7 +247,7 @@ export function MapView({
       });
     }
 
-    // 5. Render Anomaly Spikes Pulse Icons
+    // 6. Render Anomaly Spikes Pulse Icons
     alerts.forEach((alt) => {
       const anomalyIcon = L.divIcon({
         className: '',
@@ -217,7 +271,7 @@ export function MapView({
       alertsLayerRef.current.push(alertMarker);
     });
 
-  }, [hotspots, clusters, alerts, mapMode]);
+  }, [hotspots, clusters, alerts, ffdrGrid, mapMode]);
 
   // Render Active Emergency Dispatch Route Polyline
   useEffect(() => {
