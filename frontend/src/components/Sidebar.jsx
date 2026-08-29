@@ -122,20 +122,23 @@ export function Sidebar({
           </div>
         </div>
 
-        {/* Selected Hotspot Deep Dive Card */}
-        <div>
-          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
-            <Activity className="w-3.5 h-3.5 text-sky-500 dark:text-sky-400" />
-            <span>Inspection Telemetry</span>
+        {/* Selected Hotspot Map Focus Hint */}
+        {selectedHotspot && (
+          <div className="bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800/50 rounded-xl p-3 flex items-center justify-between text-xs shadow-sm">
+            <div className="flex items-center gap-2 truncate">
+              <span
+                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                style={{ backgroundColor: TAXONOMY_COLORS[selectedHotspot.classification] || '#38bdf8' }}
+              />
+              <span className="font-bold text-slate-800 dark:text-slate-200 truncate">
+                {selectedHotspot.classification} ({selectedHotspot.frp} MW)
+              </span>
+            </div>
+            <span className="text-[10px] text-sky-600 dark:text-sky-400 font-semibold uppercase flex-shrink-0 ml-2">
+              Anchored on Map
+            </span>
           </div>
-          <HotspotCard
-            hotspot={selectedHotspot}
-            activeRoute={activeRoute}
-            onSetRoute={onSetRoute}
-            onShowTemporaryResources={onShowTemporaryResources}
-            showingTemporaryResources={showingTemporaryResources}
-          />
-        </div>
+        )}
 
         {/* FRP Radiance Trend Chart */}
         <div className="bg-white dark:bg-dark-850/90 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-2 shadow-sm">

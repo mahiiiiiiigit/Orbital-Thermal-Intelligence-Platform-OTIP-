@@ -1,8 +1,10 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.heat';
 import { TAXONOMY_COLORS, THERMAL_GRADIENT, FFDR_COLORS } from '../constants/taxonomy';
+import { HotspotCard } from './HotspotCard';
 
 const TYPE_COLORS = {
   fire_station: '#ef4444',
@@ -23,8 +25,11 @@ export function MapView({
   regionConfig,
   selectedHotspot,
   activeRoute,
+  onSetRoute,
   onSelectHotspot,
   onSelectCluster,
+  onShowTemporaryResources,
+  showingTemporaryResources = false,
 }) {
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -36,6 +41,10 @@ export function MapView({
   const routeLayersRef = useRef([]);
   const ffdrLayerRef = useRef(null);
   const heatLayerRef = useRef(null);
+
+  // Dynamic Map Anchored Popup Container
+  const popupRef = useRef(null);
+  const [popupContainer, setPopupContainer] = useState(null);
 
   // Initialize Map
   useEffect(() => {
@@ -50,6 +59,14 @@ export function MapView({
     // Reposition zoom controls
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
+    // Map background click closes selected hotspot popup
+    map.on('click', (e) => {
+      // If clicking on the map canvas itself, deselect
+      if (onSelectHotspot) {
+        onSelectHotspot(null);
+      }
+    });
+
     mapInstanceRef.current = map;
 
     return () => {
@@ -57,6 +74,49 @@ export function MapView({
       mapInstanceRef.current = null;
     };
   }, []);
+
+  // Manage Selected Hotspot Map-Anchored Popup
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    if (selectedHotspot && selectedHotspot.latitude != null && selectedHotspot.longitude != null) {
+      if (popupRef.current) {
+        map.closePopup(popupRef.current);
+        popupRef.current = null;
+      }
+
+      const div = document.createElement('div');
+      div.className = 'hotspot-map-card-wrapper';
+
+      const popup = L.popup({
+        offset: [0, -10],
+        className: 'custom-map-anchored-popup',
+        autoPan: true,
+        autoPanPadding: [50, 50],
+        closeButton: false,
+        maxWidth: 380,
+        minWidth: 320,
+      })
+        .setLatLng([selectedHotspot.latitude, selectedHotspot.longitude])
+        .setContent(div)
+        .openOn(map);
+
+      popupRef.current = popup;
+      setPopupContainer(div);
+
+      popup.on('remove', () => {
+        setPopupContainer(null);
+        popupRef.current = null;
+      });
+    } else {
+      if (popupRef.current) {
+        map.closePopup(popupRef.current);
+        popupRef.current = null;
+      }
+      setPopupContainer(null);
+    }
+  }, [selectedHotspot]);
 
   // Update Tile Layer dynamically on Theme Switch
   useEffect(() => {
@@ -83,12 +143,12 @@ export function MapView({
   // Update Region Pan/Zoom
   useEffect(() => {
     if (!mapInstanceRef.current || !regionConfig) return;
-    if (activeRoute) return; // Don't override route zoom
+    if (activeRoute || selectedHotspot) return; // Don't override active focus
     mapInstanceRef.current.flyTo(regionConfig.center, regionConfig.zoom, {
       duration: 1.2,
       easeLinearity: 0.25,
     });
-  }, [regionConfig, activeRoute]);
+  }, [regionConfig, activeRoute, selectedHotspot]);
 
   // Render Overlays according to mapMode, telemetry, and temporary resources
   useEffect(() => {
@@ -141,31 +201,11 @@ export function MapView({
             `<strong>${p.forest_division || 'Forest Division'}</strong><br/>FSI Danger: <span style="color:${color}; font-weight:bold;">${risk}</span>`,
             { sticky: true, direction: 'top' }
           );
-
-          const popupContent = `
-            <div style="font-family:system-ui, sans-serif; font-size:12px; line-height:1.45; min-width:250px; max-width:300px; color:#f8fafc;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:4px;">
-                <strong style="color:${color}; font-size:13px;">${risk.toUpperCase()} FIRE RISK</strong>
-                <span style="font-size:9px; font-weight:700; background:rgba(34,197,94,0.2); color:#4ade80; padding:2px 6px; border-radius:4px; border:1px solid rgba(34,197,94,0.4);">
-                  FSI FFDR GRID
-                </span>
-              </div>
-              <div style="margin-bottom:2px;"><strong>Forest Reserve:</strong> ${p.forest_name || 'Forest Area'}</div>
-              <div style="margin-bottom:2px;"><strong>Division:</strong> ${p.forest_division || 'Division'} (${p.state || 'India'})</div>
-              <div style="margin-bottom:2px;"><strong>Fire Weather Index:</strong> <span style="font-family:monospace; color:#fbbf24; font-weight:bold;">${p.fwi_score || 'N/A'}</span></div>
-              <div style="margin-bottom:4px; font-size:11px; color:#94a3b8;"><strong>Validity:</strong> ${p.validity_window || 'Weekly Pre-Fire Bulletin'}</div>
-              <div style="margin-top:6px; background:rgba(15,23,42,0.85); border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:6px 8px; font-size:10.5px; color:#cbd5e1;">
-                <strong style="display:block; color:#38bdf8; margin-bottom:2px;">Source: Forest Survey of India</strong>
-                <span>${p.context_note || 'Pre-fire vulnerability indicator (Not an active fire ignition without thermal detection).'}</span>
-              </div>
-            </div>
-          `;
-          layer.bindPopup(popupContent);
         },
       }).addTo(map);
     }
 
-    // 3. Render Contextual Temporary Safety Resources (Only when toggled by analyst for active incident)
+    // 3. Render Contextual Temporary Safety Resources (Only when toggled by analyst)
     if (temporarySafetyResources && temporarySafetyResources.length > 0) {
       temporarySafetyResources.forEach((res) => {
         const typeLabel = res.type ? res.type.replace('_', ' ').toUpperCase() : 'SAFETY ASSET';
@@ -183,19 +223,6 @@ export function MapView({
           `<strong>${typeLabel}</strong>: ${res.name}`,
           { sticky: true, direction: 'top' }
         );
-
-        marker.bindPopup(`
-          <div style="font-family:system-ui, sans-serif; font-size:12px; line-height:1.4; min-width:220px; color:#f8fafc;">
-            <div style="font-weight:bold; font-size:13px; color:${color}; margin-bottom:4px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:3px;">
-              ${res.name}
-            </div>
-            <div><strong>Type:</strong> ${typeLabel}</div>
-            <div><strong>Location:</strong> ${res.district || ''}, ${res.state || ''}</div>
-            <div><strong>Contact:</strong> ${res.contact || '112'}</div>
-            ${res.distance_km ? `<div><strong>Distance:</strong> ${res.distance_km} km (ETA: ${res.estimated_travel_time_mins || '-'} min)</div>` : ''}
-            <div style="margin-top:4px; font-size:10px; color:#94a3b8;">Source: ${res.source || 'State Disaster Plan'}</div>
-          </div>
-        `);
 
         temporarySafetyLayerRef.current.push(marker);
       });
@@ -241,7 +268,10 @@ export function MapView({
           { sticky: true, direction: 'top' }
         );
 
-        circle.on('click', () => onSelectCluster && onSelectCluster(cluster));
+        circle.on('click', (e) => {
+          L.DomEvent.stopPropagation(e);
+          if (onSelectCluster) onSelectCluster(cluster);
+        });
         clustersLayerRef.current.push(circle);
       });
     }
@@ -252,45 +282,23 @@ export function MapView({
         const isSpike = hotspot.classification === 'INDUSTRIAL_FIRE' || (hotspot.frp >= 90);
         const color = TAXONOMY_COLORS[hotspot.classification] || '#94a3b8';
 
-        const reasonsHtml = (hotspot.reasons || [hotspot.explanation || ''])
-          .map((r) => `<li style="margin-bottom:2px;"><span style="color:#38bdf8;">✓</span> ${r}</li>`)
-          .join('');
-
-        const isFsiDemo = hotspot.source === 'DEMO_FSI';
-        const popupContent = `
-          <div style="font-family:system-ui, sans-serif; font-size:12px; line-height:1.4; min-width:240px; max-width:290px; color:#f8fafc;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:4px;">
-              <strong style="color:${color}; font-size:13px;">${hotspot.classification}</strong>
-              <div style="display:flex; gap:4px; align-items:center;">
-                ${isFsiDemo ? '<span style="font-size:9px; font-weight:700; background:rgba(245,158,11,0.25); color:#fbbf24; padding:1px 5px; border-radius:3px; border:1px solid rgba(245,158,11,0.4);">DEMO FSI</span>' : ''}
-                <span style="font-size:10px; font-weight:700; background:rgba(56,189,248,0.2); color:#38bdf8; padding:2px 6px; border-radius:4px;">
-                  ${hotspot.confidence_level || 'HIGH'} CONF
-                </span>
-              </div>
-            </div>
-            ${hotspot.fire_danger_level ? `<div style="color:#fbbf24; font-weight:600; font-size:11px; margin-bottom:2px;">FSI Danger Index: ${hotspot.fire_danger_level}</div>` : ''}
-            <div><strong>Location:</strong> ${hotspot.forest_name || hotspot.facility_name || hotspot.land_context || 'Forest / Wildland'} ${hotspot.state ? `(${hotspot.state})` : ''}</div>
-            <div><strong>Radiance:</strong> ${hotspot.frp} MW ${hotspot.brightness_temp ? `(${hotspot.brightness_temp} K)` : ''}</div>
-            <div><strong>Status:</strong> ${hotspot.fire_status || (hotspot.active_days ? `${hotspot.active_days} observation day(s)` : 'Active Pass')}</div>
-            <div style="margin-top:6px; background:rgba(15,23,42,0.8); border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:6px 8px;">
-              <strong style="font-size:11px; color:#cbd5e1; display:block; margin-bottom:3px;">Why Classified:</strong>
-              <ul style="margin:0; padding-left:12px; font-size:11px; color:#94a3b8;">
-                ${reasonsHtml}
-              </ul>
-            </div>
-          </div>
-        `;
-
         const marker = L.circleMarker([hotspot.latitude, hotspot.longitude], {
           radius: isSpike ? 9 : (hotspot.classification === 'GAS_FLARE' || hotspot.classification === 'PERSISTENT_INDUSTRIAL' ? 7 : 5),
           color: isSpike ? '#ffffff' : color,
           fillColor: color,
           fillOpacity: mapMode === 'hybrid' ? 0.95 : 0.85,
           weight: isSpike ? 2 : 1.2,
-        })
-          .addTo(map)
-          .bindPopup(popupContent)
-          .on('click', () => onSelectHotspot && onSelectHotspot(hotspot));
+        }).addTo(map);
+
+        marker.bindTooltip(
+          `<strong>${hotspot.classification}</strong> • ${hotspot.frp} MW<br/>${hotspot.forest_name || hotspot.facility_name || hotspot.state || ''}`,
+          { sticky: true, direction: 'top' }
+        );
+
+        marker.on('click', (e) => {
+          L.DomEvent.stopPropagation(e);
+          if (onSelectHotspot) onSelectHotspot(hotspot);
+        });
 
         markersLayerRef.current.push(marker);
       });
@@ -307,16 +315,14 @@ export function MapView({
 
       const alertMarker = L.marker([alt.latitude, alt.longitude], { icon: anomalyIcon })
         .addTo(map)
-        .bindPopup(`
-          <div style="font-family:system-ui, sans-serif; font-size:12px; min-width:220px; color:#f8fafc;">
-            <strong style="color:#ef4444; font-size:13px;">CRITICAL THERMAL SPIKE</strong><br/>
-            <strong>Facility:</strong> ${alt.facility_name}<br/>
-            <strong>Current FRP:</strong> ${alt.current_frp} MW (Z-Score: +${alt.z_score}σ)<br/>
-            <strong>Normal Baseline:</strong> ${alt.baseline_mean_frp} MW<br/>
-            <p style="margin-top:4px; font-size:11px; color:#fca5a5;">${alt.recommendation}</p>
-          </div>
-        `)
-        .on('click', () => onSelectHotspot && onSelectHotspot(alt));
+        .bindTooltip(`<strong>CRITICAL SPIKE: ${alt.facility_name}</strong><br/>${alt.current_frp} MW (+${alt.z_score}σ)`, {
+          sticky: true,
+          direction: 'top',
+        })
+        .on('click', (e) => {
+          L.DomEvent.stopPropagation(e);
+          if (onSelectHotspot) onSelectHotspot(alt);
+        });
 
       alertsLayerRef.current.push(alertMarker);
     });
@@ -378,6 +384,18 @@ export function MapView({
   return (
     <div className="relative w-full h-full">
       <div ref={mapContainerRef} className="w-full h-full" />
+      {/* Map-Anchored Portal for Selected Hotspot Detail Card */}
+      {popupContainer && selectedHotspot && ReactDOM.createPortal(
+        <HotspotCard
+          hotspot={selectedHotspot}
+          activeRoute={activeRoute}
+          onSetRoute={onSetRoute}
+          onShowTemporaryResources={onShowTemporaryResources}
+          showingTemporaryResources={showingTemporaryResources}
+          onClose={() => onSelectHotspot && onSelectHotspot(null)}
+        />,
+        popupContainer
+      )}
     </div>
   );
 }

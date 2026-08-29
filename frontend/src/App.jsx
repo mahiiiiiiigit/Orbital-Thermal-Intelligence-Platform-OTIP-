@@ -102,10 +102,8 @@ export function App() {
 
         if (sorted.length > 0) {
           setTimelineIndex(sorted.length - 1);
-          setSelectedHotspot(sorted[sorted.length - 1]);
-        } else {
-          setSelectedHotspot(null);
         }
+        setSelectedHotspot(null);
         setSelectedCluster(null);
       } else {
         // Load NASA FIRMS Stream (Live or Demo as toggled)
@@ -131,10 +129,8 @@ export function App() {
 
         if (sorted.length > 0) {
           setTimelineIndex(sorted.length - 1);
-          setSelectedHotspot(sorted[sorted.length - 1]);
-        } else {
-          setSelectedHotspot(null);
         }
+        setSelectedHotspot(null);
 
         if (clusterRes.clusters && clusterRes.clusters.length > 0) {
           setSelectedCluster(clusterRes.clusters[0]);
@@ -244,8 +240,11 @@ export function App() {
             regionConfig={REGIONS[selectedRegion]}
             selectedHotspot={selectedHotspot}
             activeRoute={activeRoute}
+            onSetRoute={setActiveRoute}
             onSelectHotspot={handleSelectHotspot}
             onSelectCluster={handleSelectCluster}
+            onShowTemporaryResources={setTemporarySafetyResources}
+            showingTemporaryResources={temporarySafetyResources.length > 0}
           />
 
           {/* Floating FSI Demo Data Banner */}

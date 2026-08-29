@@ -27,6 +27,7 @@ export function HotspotCard({
   onSetRoute,
   onShowTemporaryResources,
   showingTemporaryResources = false,
+  onClose,
 }) {
   const [loadingRoute, setLoadingRoute] = useState(false);
   const [routeError, setRouteError] = useState(null);
@@ -64,13 +65,7 @@ export function HotspotCard({
   }, [hotspot]);
 
   if (!hotspot) {
-    return (
-      <div className="bg-white dark:bg-dark-850/80 border border-slate-200 dark:border-slate-800/80 rounded-xl p-4 text-center shadow-sm">
-        <Activity className="w-8 h-8 text-slate-400 dark:text-slate-600 mx-auto mb-2 opacity-50" />
-        <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-400">No Hotspot Selected</h3>
-        <p className="text-xs text-slate-500 mt-1">Click on any map marker or scrub timeline to inspect detection telemetry.</p>
-      </div>
-    );
+    return null;
   }
 
   const isFsiDemo = hotspot.source === 'DEMO_FSI' || (hotspot.is_demo === true && hotspot.fire_danger_level);
@@ -166,13 +161,13 @@ export function HotspotCard({
   };
 
   return (
-    <div className="bg-white dark:bg-dark-850/90 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-3.5 shadow-md dark:shadow-xl backdrop-blur-md transition-colors duration-200">
-      {/* 1. Header: Classification, Confidence, Facility, Lat/Lon, Date */}
+    <div className="bg-white/95 dark:bg-dark-850/95 border border-slate-300 dark:border-slate-700/80 rounded-2xl p-4 space-y-3 shadow-2xl backdrop-blur-xl transition-colors duration-200 max-h-[82vh] overflow-y-auto select-text">
+      {/* 1. Header: Classification, Confidence, Facility, Lat/Lon, Date, and Close Button */}
       <div className="flex items-start justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-2.5">
-        <div>
-          <div className="flex items-center gap-1.5">
+        <div className="flex-1 pr-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <span
-              className="w-2.5 h-2.5 rounded-full"
+              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
               style={{ backgroundColor: color }}
             />
             <span className="text-xs font-bold uppercase tracking-wider" style={{ color }}>
@@ -192,10 +187,23 @@ export function HotspotCard({
             {hotspot.latitude?.toFixed(4)}°N, {hotspot.longitude?.toFixed(4)}°E • {hotspot.timestamp?.slice(0, 16).replace('T', ' ')} UTC
           </p>
         </div>
-        <div className="flex flex-col items-end gap-1">
-          <ConfidenceBadge level={hotspot.confidence_level || 'HIGH'} />
-          {hotspot.fire_danger_level && (
-            <DangerBadge level={hotspot.fire_danger_level} />
+
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <div className="flex flex-col items-end gap-1">
+            <ConfidenceBadge level={hotspot.confidence_level || 'HIGH'} />
+            {hotspot.fire_danger_level && (
+              <DangerBadge level={hotspot.fire_danger_level} />
+            )}
+          </div>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors ml-1"
+              title="Close popup"
+            >
+              <X className="w-4 h-4" />
+            </button>
           )}
         </div>
       </div>
@@ -242,7 +250,7 @@ export function HotspotCard({
         </div>
         <div className="bg-slate-50 dark:bg-dark-900/80 border border-slate-200 dark:border-slate-800/60 rounded-lg p-2">
           <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Fire Status / Persistence</span>
-          <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 font-mono">
+          <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 font-mono truncate block">
             {hotspot.fire_status || (hotspot.active_days ? `${hotspot.active_days} observation day(s)` : 'Active Pass')}
           </span>
         </div>
@@ -258,7 +266,7 @@ export function HotspotCard({
       <div className="bg-slate-50 dark:bg-dark-900/80 border border-slate-200 dark:border-slate-800/60 rounded-lg p-2.5 text-xs space-y-1">
         <div className="flex justify-between">
           <span className="text-slate-500 dark:text-slate-400">Context / Eco-Zone:</span>
-          <span className="font-medium text-slate-800 dark:text-slate-200 truncate max-w-[200px]">
+          <span className="font-medium text-slate-800 dark:text-slate-200 truncate max-w-[190px]">
             {hotspot.forest_type || hotspot.facility_category || hotspot.land_context || 'Unassigned'}
           </span>
         </div>
@@ -339,7 +347,7 @@ export function HotspotCard({
 
       {/* 7. [RESPOND] Action Button (Shown for High-Risk / Critical / Wildfire events) */}
       {canRespond && (
-        <div className="border-t border-slate-200 dark:border-slate-800 pt-3 space-y-2">
+        <div className="border-t border-slate-200 dark:border-slate-800 pt-2.5 space-y-2">
           <button
             type="button"
             onClick={() => {
