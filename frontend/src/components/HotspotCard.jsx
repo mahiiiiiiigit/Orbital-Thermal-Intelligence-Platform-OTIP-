@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { ConfidenceBadge, RiskBadge } from './RiskBadge';
+import { ConfidenceBadge, RiskBadge, DangerBadge } from './RiskBadge';
 import { TAXONOMY_COLORS } from '../constants/taxonomy';
-import { Flame, ShieldAlert, CheckCircle2, Navigation, Activity, Clock, Truck, X } from 'lucide-react';
+import { Flame, ShieldAlert, CheckCircle2, Navigation, Activity, Clock, Truck, X, Trees, AlertOctagon } from 'lucide-react';
 import { fetchEmergencyRoute } from '../services/api';
 
 export function HotspotCard({ hotspot, activeRoute, onSetRoute }) {
@@ -18,6 +18,7 @@ export function HotspotCard({ hotspot, activeRoute, onSetRoute }) {
     );
   }
 
+  const isFsiDemo = hotspot.source === 'DEMO_FSI' || hotspot.is_demo === true && hotspot.fire_danger_level;
   const color = TAXONOMY_COLORS[hotspot.classification] || '#94a3b8';
   const reasons = hotspot.reasons && hotspot.reasons.length > 0
     ? hotspot.reasons
@@ -55,16 +56,35 @@ export function HotspotCard({ hotspot, activeRoute, onSetRoute }) {
             <span className="text-xs font-bold uppercase tracking-wider" style={{ color }}>
               {hotspot.classification}
             </span>
+            {isFsiDemo && (
+              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/40">
+                DEMO FSI
+              </span>
+            )}
           </div>
           <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 mt-0.5 leading-snug">
-            {hotspot.facility_name || hotspot.explanation || 'Thermal Anomaly'}
+            {hotspot.forest_name || hotspot.facility_name || hotspot.explanation || 'Thermal Anomaly'}
           </h3>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
-            {hotspot.timestamp?.slice(0, 16).replace('T', ' ')} UTC • {hotspot.latitude?.toFixed(4)}°N, {hotspot.longitude?.toFixed(4)}°E
+            {hotspot.state ? `${hotspot.district || ''}, ${hotspot.state} • ` : ''}
+            {hotspot.timestamp?.slice(0, 16).replace('T', ' ')} UTC
           </p>
         </div>
-        <ConfidenceBadge level={hotspot.confidence_level || 'HIGH'} />
+        <div className="flex flex-col items-end gap-1">
+          <ConfidenceBadge level={hotspot.confidence_level || 'HIGH'} />
+          {hotspot.fire_danger_level && (
+            <DangerBadge level={hotspot.fire_danger_level} />
+          )}
+        </div>
       </div>
+
+      {/* Large Forest Fire Alert Banner */}
+      {hotspot.large_forest_fire && (
+        <div className="bg-rose-500/15 border border-rose-500/40 rounded-lg p-2 flex items-center gap-2 text-xs text-rose-600 dark:text-rose-400 font-bold">
+          <AlertOctagon className="w-4 h-4 text-rose-500 animate-pulse flex-shrink-0" />
+          <span>LARGE FOREST FIRE EXCURSION (High Intensity Spatial Cluster)</span>
+        </div>
+      )}
 
       {/* Telemetry Grid */}
       <div className="grid grid-cols-2 gap-2 text-xs">
@@ -79,33 +99,35 @@ export function HotspotCard({ hotspot, activeRoute, onSetRoute }) {
           </span>
         </div>
         <div className="bg-slate-50 dark:bg-dark-900/80 border border-slate-200 dark:border-slate-800/60 rounded-lg p-2">
-          <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Persistence</span>
+          <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Fire Status</span>
           <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 font-mono">
-            {hotspot.active_days || 1} observation day(s)
+            {hotspot.fire_status || (hotspot.active_days ? `${hotspot.active_days} observation day(s)` : 'Active Pass')}
           </span>
         </div>
         <div className="bg-slate-50 dark:bg-dark-900/80 border border-slate-200 dark:border-slate-800/60 rounded-lg p-2">
-          <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Pass Profile</span>
+          <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Data Source</span>
           <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 font-mono">
-            {hotspot.day_night === 'N' ? 'Night (24/7 Flaring)' : 'Daytime Pass'}
+            {hotspot.source || 'NASA_FIRMS'}
           </span>
         </div>
       </div>
 
-      {/* Land / Asset Attribution */}
+      {/* Forest Context / Land Attribution */}
       <div className="bg-slate-50 dark:bg-dark-900/80 border border-slate-200 dark:border-slate-800/60 rounded-lg p-2.5 text-xs space-y-1">
         <div className="flex justify-between">
-          <span className="text-slate-500 dark:text-slate-400">Context / Asset:</span>
-          <span className="font-medium text-slate-800 dark:text-slate-200">{hotspot.facility_category || hotspot.land_context || 'Unassigned'}</span>
+          <span className="text-slate-500 dark:text-slate-400">Context / Eco-Zone:</span>
+          <span className="font-medium text-slate-800 dark:text-slate-200 truncate max-w-[200px]">
+            {hotspot.forest_type || hotspot.facility_category || hotspot.land_context || 'Unassigned'}
+          </span>
         </div>
-        {hotspot.distance_to_facility_m !== undefined && hotspot.distance_to_facility_m !== null && (
+        {hotspot.district && (
           <div className="flex justify-between">
-            <span className="text-slate-500 dark:text-slate-400">Distance to Facility:</span>
-            <span className="font-mono text-sky-600 dark:text-sky-400">{Math.round(hotspot.distance_to_facility_m)} m</span>
+            <span className="text-slate-500 dark:text-slate-400">Forest Division:</span>
+            <span className="font-mono text-emerald-600 dark:text-emerald-400">{hotspot.district} ({hotspot.state})</span>
           </div>
         )}
         <div className="flex justify-between items-center pt-1 border-t border-slate-200 dark:border-slate-800/60">
-          <span className="text-slate-500 dark:text-slate-400">Risk Assessment:</span>
+          <span className="text-slate-500 dark:text-slate-400">Wildfire Risk Index:</span>
           <div className="flex items-center gap-1.5">
             <span className="font-mono font-bold text-xs text-amber-600 dark:text-amber-300">{hotspot.risk_score || 35.0} / 100</span>
             <RiskBadge level={hotspot.risk_level || 'medium'} />

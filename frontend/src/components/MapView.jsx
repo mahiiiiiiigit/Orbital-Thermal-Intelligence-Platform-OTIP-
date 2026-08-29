@@ -153,17 +153,22 @@ export function MapView({
           .map((r) => `<li style="margin-bottom:2px;"><span style="color:#38bdf8;">✓</span> ${r}</li>`)
           .join('');
 
+        const isFsiDemo = hotspot.source === 'DEMO_FSI';
         const popupContent = `
-          <div style="font-family:system-ui, sans-serif; font-size:12px; line-height:1.4; min-width:230px; max-width:280px; color:#f8fafc;">
+          <div style="font-family:system-ui, sans-serif; font-size:12px; line-height:1.4; min-width:240px; max-width:290px; color:#f8fafc;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:4px;">
               <strong style="color:${color}; font-size:13px;">${hotspot.classification}</strong>
-              <span style="font-size:10px; font-weight:700; background:rgba(56,189,248,0.2); color:#38bdf8; padding:2px 6px; border-radius:4px;">
-                ${hotspot.confidence_level || 'HIGH'} CONF
-              </span>
+              <div style="display:flex; gap:4px; align-items:center;">
+                ${isFsiDemo ? '<span style="font-size:9px; font-weight:700; background:rgba(245,158,11,0.25); color:#fbbf24; padding:1px 5px; border-radius:3px; border:1px solid rgba(245,158,11,0.4);">DEMO FSI</span>' : ''}
+                <span style="font-size:10px; font-weight:700; background:rgba(56,189,248,0.2); color:#38bdf8; padding:2px 6px; border-radius:4px;">
+                  ${hotspot.confidence_level || 'HIGH'} CONF
+                </span>
+              </div>
             </div>
-            <div><strong>Asset / Area:</strong> ${hotspot.facility_name || hotspot.land_context || 'Agrarian / Wildland'}</div>
+            ${hotspot.fire_danger_level ? `<div style="color:#fbbf24; font-weight:600; font-size:11px; margin-bottom:2px;">FSI Danger Index: ${hotspot.fire_danger_level}</div>` : ''}
+            <div><strong>Location:</strong> ${hotspot.forest_name || hotspot.facility_name || hotspot.land_context || 'Forest / Wildland'} ${hotspot.state ? `(${hotspot.state})` : ''}</div>
             <div><strong>Radiance:</strong> ${hotspot.frp} MW ${hotspot.brightness_temp ? `(${hotspot.brightness_temp} K)` : ''}</div>
-            <div><strong>Persistence:</strong> ${hotspot.active_days || 1} observation day(s)</div>
+            <div><strong>Status:</strong> ${hotspot.fire_status || (hotspot.active_days ? `${hotspot.active_days} observation day(s)` : 'Active Pass')}</div>
             <div style="margin-top:6px; background:rgba(15,23,42,0.8); border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:6px 8px;">
               <strong style="font-size:11px; color:#cbd5e1; display:block; margin-bottom:3px;">Why Classified:</strong>
               <ul style="margin:0; padding-left:12px; font-size:11px; color:#94a3b8;">

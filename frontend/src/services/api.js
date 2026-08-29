@@ -29,6 +29,23 @@ export async function fetchHotspots({
   return res.json();
 }
 
+export async function fetchFsiForestFires({
+  mode = 'auto',
+  state = null,
+  dangerLevel = null,
+} = {}) {
+  const params = new URLSearchParams();
+  params.set('mode', mode);
+  if (state) params.set('state', state);
+  if (dangerLevel) params.set('danger_level', dangerLevel);
+
+  const res = await fetch(`/api/v1/fsi/forest-fires?${params.toString()}`);
+  if (!res.ok) {
+    throw new Error(`FSI API error (${res.status}): ${res.statusText}`);
+  }
+  return res.json();
+}
+
 export async function fetchClusters({ mode = 'auto', source = 'VIIRS_SNPP_NRT' } = {}) {
   const res = await fetch(`/api/v1/clusters/persistent?mode=${mode}&source=${source}`);
   if (!res.ok) {

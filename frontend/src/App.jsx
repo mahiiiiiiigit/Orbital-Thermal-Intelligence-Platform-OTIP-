@@ -4,11 +4,12 @@ import { Sidebar } from './components/Sidebar';
 import { MapView } from './components/MapView';
 import { TimelineSlider } from './components/TimelineSlider';
 import { ThermalLegend } from './components/ThermalLegend';
-import { fetchHotspots, fetchClusters, fetchAlerts } from './services/api';
+import { fetchHotspots, fetchClusters, fetchAlerts, fetchFsiForestFires } from './services/api';
 import { REGIONS } from './constants/taxonomy';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Trees } from 'lucide-react';
 
 export function App() {
+  const [dataSource, setDataSource] = useState('firms'); // 'firms' | 'fsi'
   const [mode, setMode] = useState('auto'); // 'auto' (Live NASA) | 'demo'
   const [selectedRegion, setSelectedRegion] = useState('india');
   const [selectedSensor, setSelectedSensor] = useState('VIIRS_SNPP_NRT');
@@ -58,37 +59,58 @@ export function App() {
     const region = REGIONS[selectedRegion] || REGIONS.india;
 
     try {
-      const [hotspotRes, clusterRes, alertRes] = await Promise.all([
-        fetchHotspots({
-          mode,
-          source: selectedSensor,
-          days: 3,
-          bbox: region.bbox,
-          forceRefresh,
-        }),
-        fetchClusters({ mode, source: selectedSensor }),
-        fetchAlerts({ mode, source: selectedSensor }),
-      ]);
+      if (dataSource === 'fsi') {
+        // Load FSI Forest Fire Intelligence (Demo / Fallback Layer)
+        const fsiRes = await fetchFsiForestFires({ mode: 'demo' });
+        const raw = fsiRes.hotspots || [];
+        const sorted = raw.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
-      const raw = hotspotRes.hotspots || [];
-      const sorted = raw.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        setAllHotspots(sorted);
+        setClusters(fsiRes.clusters || []);
+        setAlerts(fsiRes.alerts || []);
+        setNotice(fsiRes.notice || 'DEMO DATA — Simulated Forest Survey of India (FSI) Layer');
 
-      setAllHotspots(sorted);
-      setClusters(clusterRes.clusters || []);
-      setAlerts(alertRes.alerts || []);
-      setNotice(hotspotRes.notice || `Loaded ${sorted.length} hotspots (${region.name}).`);
-
-      if (sorted.length > 0) {
-        setTimelineIndex(sorted.length - 1);
-        setSelectedHotspot(sorted[sorted.length - 1]);
-      } else {
-        setSelectedHotspot(null);
-      }
-
-      if (clusterRes.clusters && clusterRes.clusters.length > 0) {
-        setSelectedCluster(clusterRes.clusters[0]);
-      } else {
+        if (sorted.length > 0) {
+          setTimelineIndex(sorted.length - 1);
+          setSelectedHotspot(sorted[sorted.length - 1]);
+        } else {
+          setSelectedHotspot(null);
+        }
         setSelectedCluster(null);
+      } else {
+        // Load NASA FIRMS Stream (Live or Demo as toggled)
+        const [hotspotRes, clusterRes, alertRes] = await Promise.all([
+          fetchHotspots({
+            mode,
+            source: selectedSensor,
+            days: 3,
+            bbox: region.bbox,
+            forceRefresh,
+          }),
+          fetchClusters({ mode, source: selectedSensor }),
+          fetchAlerts({ mode, source: selectedSensor }),
+        ]);
+
+        const raw = hotspotRes.hotspots || [];
+        const sorted = raw.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        setAllHotspots(sorted);
+        setClusters(clusterRes.clusters || []);
+        setAlerts(alertRes.alerts || []);
+        setNotice(hotspotRes.notice || `Loaded ${sorted.length} hotspots (${region.name}).`);
+
+        if (sorted.length > 0) {
+          setTimelineIndex(sorted.length - 1);
+          setSelectedHotspot(sorted[sorted.length - 1]);
+        } else {
+          setSelectedHotspot(null);
+        }
+
+        if (clusterRes.clusters && clusterRes.clusters.length > 0) {
+          setSelectedCluster(clusterRes.clusters[0]);
+        } else {
+          setSelectedCluster(null);
+        }
       }
     } catch (err) {
       console.error('Failed to load telemetry:', err);
@@ -96,7 +118,7 @@ export function App() {
     } finally {
       setLoading(false);
     }
-  }, [mode, selectedRegion, selectedSensor]);
+  }, [dataSource, mode, selectedRegion, selectedSensor]);
 
   useEffect(() => {
     loadData();
@@ -142,6 +164,8 @@ export function App() {
       <Navbar
         mode={mode}
         onToggleMode={(newMode) => setMode(newMode)}
+        dataSource={dataSource}
+        onToggleDataSource={(src) => setDataSource(src)}
         selectedRegion={selectedRegion}
         onSelectRegion={setSelectedRegion}
         selectedSensor={selectedSensor}
@@ -190,8 +214,16 @@ export function App() {
             onSelectCluster={(c) => setSelectedCluster(c)}
           />
 
-          {/* Floating Emergency Alert Banner */}
-          {alerts.length > 0 && (
+          {/* Floating FSI Demo Data Banner */}
+          {dataSource === 'fsi' && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-amber-500/95 text-slate-950 font-bold text-xs py-1.5 px-4 rounded-xl shadow-2xl border border-amber-300 backdrop-blur-md flex items-center gap-2">
+              <Trees className="w-4 h-4 text-slate-950" />
+              <span>DEMO DATA — Simulated Forest Survey of India (FSI) Wildfire Intelligence</span>
+            </div>
+          )}
+
+          {/* Floating Emergency Alert Banner (for Critical Spikes) */}
+          {alerts.length > 0 && dataSource !== 'fsi' && (
             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-red-600/95 text-white font-bold text-xs py-2 px-4 rounded-xl shadow-2xl border border-red-400/50 backdrop-blur-md flex items-center gap-2 animate-bounce">
               <AlertTriangle className="w-4 h-4 text-white" />
               <span>

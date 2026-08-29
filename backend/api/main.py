@@ -13,6 +13,7 @@ from backend.analytics.classifier import classify_hotspots
 from backend.analytics.clusters import build_persistent_clusters
 from backend.analytics.st_clustering import cluster_hotspots
 from backend.ingestion.demo_data import generate_hotspots
+from backend.ingestion.fsi_demo_data import generate_fsi_demo_data
 from backend.ingestion.firms_client import (
     VALID_SOURCES,
     fetch_firms_hotspots,
@@ -309,6 +310,65 @@ def get_emergency_route(
         "origin_depot": origin,
         "target_coords": {"latitude": lat, "longitude": lon},
         "route": route_data,
+    }
+
+
+@app.get("/api/v1/fsi/forest-fires")
+def get_fsi_forest_fires(
+    mode: str = Query("auto", pattern="^(auto|live|demo)$"),
+    state: Optional[str] = Query(None, description="Filter by Indian State"),
+    danger_level: Optional[str] = Query(None, description="Filter by Fire Danger Level (EXTREME, HIGH, MODERATE, LOW)"),
+):
+    """
+    Ingests Forest Survey of India (FSI) forest fire alerts and danger intelligence.
+    Fallback hierarchy: Live FSI -> if unavailable -> Demo FSI with clear labeling.
+    """
+    fsi_records = []
+    resolved_mode = mode
+    is_demo = False
+    notice = ""
+
+    if mode == "live":
+        # Check if live FSI feed / key is configured
+        fsi_key = os.getenv("FSI_API_KEY", "").strip()
+        if not fsi_key:
+            raise HTTPException(
+                status_code=503,
+                detail="Live FSI API feed is currently not configured. Use mode=auto for automatic fallback or mode=demo.",
+            )
+        fsi_records = []
+        resolved_mode = "live"
+        is_demo = False
+        notice = "Live Forest Survey of India (FSI) Van Agni feed."
+
+    if not fsi_records:
+        # Fallback to deterministic FSI demo dataset
+        fsi_records = generate_fsi_demo_data()
+        resolved_mode = "demo"
+        is_demo = True
+        notice = "DEMO DATA — Simulated Forest Survey of India (FSI) Wildfire Intelligence"
+
+    # Apply filters if requested
+    if state:
+        fsi_records = [r for r in fsi_records if r.get("state", "").lower() == state.lower()]
+    if danger_level:
+        fsi_records = [r for r in fsi_records if r.get("fire_danger_level", "").upper() == danger_level.upper()]
+
+    # Run through classification and anomaly detection to integrate with analytics engine
+    classified_fsi = classify_hotspots(fsi_records)
+    alerts = detect_anomalies(classified_fsi)
+    clusters = build_persistent_clusters(classified_fsi)
+
+    return {
+        "mode": resolved_mode,
+        "source": "DEMO_FSI" if is_demo else "FSI_LIVE",
+        "is_demo": is_demo,
+        "notice": notice,
+        "total_records": len(classified_fsi),
+        "large_forest_fires_count": sum(1 for r in classified_fsi if r.get("large_forest_fire")),
+        "hotspots": classified_fsi,
+        "alerts": alerts,
+        "clusters": clusters,
     }
 
 
