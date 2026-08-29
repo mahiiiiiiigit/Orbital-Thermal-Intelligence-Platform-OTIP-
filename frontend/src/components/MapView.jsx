@@ -33,7 +33,7 @@ export function MapView({
   onViewFingerprint,
 }) {
   const mapContainerRef = useRef(null);
-  const mapInstanceRef = useRef(null);
+  const [map, setMap] = useState(null);
   const baseTileLayerRef = useRef(null);
   const markersLayerRef = useRef([]);
   const clustersLayerRef = useRef([]);
@@ -47,52 +47,81 @@ export function MapView({
   const popupRef = useRef(null);
   const [popupContainer, setPopupContainer] = useState(null);
 
-  // Initialize Map
+  // 1. Initialize Leaflet Map Instance
   useEffect(() => {
-    if (!mapContainerRef.current || mapInstanceRef.current) return;
+    if (!mapContainerRef.current) return;
 
-    const map = L.map(mapContainerRef.current, {
+    const initialMap = L.map(mapContainerRef.current, {
       center: regionConfig?.center || [22.5, 78.5],
       zoom: regionConfig?.zoom || 5,
       zoomControl: false,
     });
 
-    // Reposition zoom controls
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
+    // Reposition zoom controls to bottom right
+    L.control.zoom({ position: 'bottomright' }).addTo(initialMap);
 
-    // Map background click closes selected hotspot popup
-    map.on('click', (e) => {
-      // If clicking on the map canvas itself, deselect
+    // Map canvas click closes selected hotspot popup
+    initialMap.on('click', () => {
       if (onSelectHotspot) {
         onSelectHotspot(null);
       }
     });
 
-    mapInstanceRef.current = map;
+    setMap(initialMap);
 
     // Invalidate size once DOM layout completes
     setTimeout(() => {
-      map.invalidateSize();
+      initialMap.invalidateSize();
     }, 150);
 
     let resizeObserver = null;
     if (window.ResizeObserver && mapContainerRef.current) {
       resizeObserver = new ResizeObserver(() => {
-        map.invalidateSize();
+        initialMap.invalidateSize();
       });
       resizeObserver.observe(mapContainerRef.current);
     }
 
     return () => {
       if (resizeObserver) resizeObserver.disconnect();
-      map.remove();
-      mapInstanceRef.current = null;
+      initialMap.remove();
+      setMap(null);
     };
   }, []);
 
-  // Manage Selected Hotspot Map-Anchored Popup
+  // 2. Manage Dynamic Base Tile Layer (CARTO Dark / Voyager)
   useEffect(() => {
-    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    if (baseTileLayerRef.current) {
+      map.removeLayer(baseTileLayerRef.current);
+    }
+
+    const cartoKey = import.meta.env.VITE_CARTO_KEY || 'cb1_2jno_1_ef0c23ffe5f8a02710afad82';
+    const tileStyle = theme === 'dark' ? 'dark_all' : 'rastertiles/voyager';
+    const tileUrl = `https://basemaps.cartocdn.com/${tileStyle}/{z}/{x}/{y}.png?key=${cartoKey}`;
+
+    const newTileLayer = L.tileLayer(tileUrl, {
+      attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; NASA FIRMS &copy; Forest Survey of India &copy; OpenRouteService',
+      maxZoom: 19,
+      subdomains: 'abcd',
+    }).addTo(map);
+
+    baseTileLayerRef.current = newTileLayer;
+  }, [map, theme]);
+
+  // 3. Manage Region Pan/Zoom Navigation
+  useEffect(() => {
+    if (!map || !regionConfig) return;
+    if (activeRoute || selectedHotspot) return; // Don't override active incident focus
+    map.flyTo(regionConfig.center, regionConfig.zoom, {
+      duration: 1.2,
+      easeLinearity: 0.25,
+    });
+  }, [map, regionConfig, activeRoute, selectedHotspot]);
+
+  // 4. Manage Selected Hotspot Map-Anchored Popup
+  useEffect(() => {
     if (!map) return;
 
     if (selectedHotspot && selectedHotspot.latitude != null && selectedHotspot.longitude != null) {
@@ -131,46 +160,13 @@ export function MapView({
       }
       setPopupContainer(null);
     }
-  }, [selectedHotspot]);
+  }, [map, selectedHotspot]);
 
-  // Update Tile Layer dynamically on Theme Switch
+  // 5. Render Overlays according to mapMode, telemetry, and temporary resources
   useEffect(() => {
-    const map = mapInstanceRef.current;
     if (!map) return;
 
-    if (baseTileLayerRef.current) {
-      map.removeLayer(baseTileLayerRef.current);
-    }
-
-    const cartoKey = import.meta.env.VITE_CARTO_KEY || 'cb1_2jno_1_ef0c23ffe5f8a02710afad82';
-    const tileStyle = theme === 'dark' ? 'dark_all' : 'rastertiles/voyager';
-    const tileUrl = `https://basemaps.cartocdn.com/${tileStyle}/{z}/{x}/{y}.png?key=${cartoKey}`;
-
-    const newTileLayer = L.tileLayer(tileUrl, {
-      attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; NASA FIRMS &copy; Forest Survey of India &copy; OpenRouteService',
-      maxZoom: 19,
-      subdomains: 'abcd',
-    }).addTo(map);
-
-    baseTileLayerRef.current = newTileLayer;
-  }, [theme]);
-
-  // Update Region Pan/Zoom
-  useEffect(() => {
-    if (!mapInstanceRef.current || !regionConfig) return;
-    if (activeRoute || selectedHotspot) return; // Don't override active focus
-    mapInstanceRef.current.flyTo(regionConfig.center, regionConfig.zoom, {
-      duration: 1.2,
-      easeLinearity: 0.25,
-    });
-  }, [regionConfig, activeRoute, selectedHotspot]);
-
-  // Render Overlays according to mapMode, telemetry, and temporary resources
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map) return;
-
-    // 1. Clear previous layers
+    // Clear previous layers
     markersLayerRef.current.forEach((m) => map.removeLayer(m));
     markersLayerRef.current = [];
 
@@ -193,7 +189,7 @@ export function MapView({
       heatLayerRef.current = null;
     }
 
-    // 2. Render Forest Fire Danger Rating (FFDR) 5km Grid (Forest Risk Mode)
+    // Render Forest Fire Danger Rating (FFDR) 5km Grid (Forest Risk Mode)
     if (mapMode === 'forest_risk' && ffdrGrid && ffdrGrid.features) {
       ffdrLayerRef.current = L.geoJSON(ffdrGrid, {
         style: (feature) => {
@@ -220,7 +216,7 @@ export function MapView({
       }).addTo(map);
     }
 
-    // 3. Render Contextual Temporary Safety Resources (Only when toggled by analyst)
+    // Render Contextual Temporary Safety Resources (Only when toggled by analyst)
     if (temporarySafetyResources && temporarySafetyResources.length > 0) {
       temporarySafetyResources.forEach((res) => {
         const typeLabel = res.type ? res.type.replace('_', ' ').toUpperCase() : 'SAFETY ASSET';
@@ -243,7 +239,7 @@ export function MapView({
       });
     }
 
-    // 4. Render Heatmap Layer (Thermal & Hybrid modes)
+    // Render Heatmap Layer (Thermal & Hybrid modes)
     if (mapMode === 'thermal' || mapMode === 'hybrid') {
       const heatPoints = hotspots.map((h) => {
         const weight = Math.min(1.0, Math.max(0.12, (h.frp || 5.0) / 80.0));
@@ -261,7 +257,7 @@ export function MapView({
       }
     }
 
-    // 5. Render Cluster Boundaries (Standard, Hybrid & Forest Risk modes)
+    // Render Cluster Boundaries (Standard, Hybrid & Forest Risk modes)
     if (mapMode === 'standard' || mapMode === 'hybrid' || mapMode === 'forest_risk') {
       clusters.forEach((cluster) => {
         const isFire = cluster.classification === 'INDUSTRIAL_FIRE';
@@ -291,7 +287,7 @@ export function MapView({
       });
     }
 
-    // 6. Render Hotspot Markers (Standard, Hybrid & Forest Risk modes)
+    // Render Hotspot Markers (Standard, Hybrid & Forest Risk modes)
     if (mapMode === 'standard' || mapMode === 'hybrid' || mapMode === 'forest_risk') {
       hotspots.forEach((hotspot) => {
         const isSpike = hotspot.classification === 'INDUSTRIAL_FIRE' || (hotspot.frp >= 90);
@@ -319,7 +315,7 @@ export function MapView({
       });
     }
 
-    // 7. Render Anomaly Spikes Pulse Icons
+    // Render Anomaly Spikes Pulse Icons
     alerts.forEach((alt) => {
       const anomalyIcon = L.divIcon({
         className: '',
@@ -342,11 +338,10 @@ export function MapView({
       alertsLayerRef.current.push(alertMarker);
     });
 
-  }, [hotspots, clusters, alerts, ffdrGrid, temporarySafetyResources, mapMode]);
+  }, [map, hotspots, clusters, alerts, ffdrGrid, temporarySafetyResources, mapMode]);
 
-  // Render Active Emergency Dispatch Route Polyline
+  // 6. Render Active Emergency Dispatch Route Polyline
   useEffect(() => {
-    const map = mapInstanceRef.current;
     if (!map) return;
 
     routeLayersRef.current.forEach((l) => map.removeLayer(l));
@@ -394,7 +389,7 @@ export function MapView({
     const bounds = L.latLngBounds(coords);
     map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
 
-  }, [activeRoute]);
+  }, [map, activeRoute]);
 
   return (
     <div className="relative w-full h-full">
