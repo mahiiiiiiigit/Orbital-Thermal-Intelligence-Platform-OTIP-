@@ -1,5 +1,14 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// Ensure L is globally available for Leaflet plugins (leaflet.heat)
+if (typeof window !== 'undefined') {
+  window.L = L;
+}
+
+import 'leaflet.heat';
 import App from './App.jsx';
 import './index.css';
 

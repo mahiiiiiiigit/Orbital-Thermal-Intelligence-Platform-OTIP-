@@ -2,6 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+
+if (typeof window !== 'undefined') {
+  window.L = L;
+}
+
 import 'leaflet.heat';
 import { TAXONOMY_COLORS, THERMAL_GRADIENT, FFDR_COLORS } from '../constants/taxonomy';
 import { HotspotCard } from './HotspotCard';
