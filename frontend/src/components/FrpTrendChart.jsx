@@ -51,24 +51,24 @@ export function FrpTrendChart({ hotspots = [], activeDate = null }) {
               <stop offset="95%" stopColor="#38bdf8" stopOpacity={0.0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-slate-200 dark:text-slate-800" vertical={false} />
           <XAxis
             dataKey="shortDate"
-            stroke="#64748b"
+            stroke="#94a3b8"
             fontSize={9}
             tickLine={false}
             interval="preserveStartEnd"
           />
-          <YAxis stroke="#64748b" fontSize={9} tickLine={false} />
+          <YAxis stroke="#94a3b8" fontSize={9} tickLine={false} />
           <Tooltip
             content={({ active, payload }) => {
               if (active && payload && payload.length) {
                 const data = payload[0].payload;
                 return (
-                  <div className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-[11px] shadow-xl">
-                    <p className="font-mono text-slate-300 font-bold">{data.date}</p>
-                    <p className="text-sky-400 font-semibold">Mean Radiance: {data.meanFrp} MW</p>
-                    <p className="text-slate-400">{data.count} active thermal detections</p>
+                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-[11px] shadow-xl">
+                    <p className="font-mono text-slate-800 dark:text-slate-300 font-bold">{data.date}</p>
+                    <p className="text-sky-600 dark:text-sky-400 font-semibold">Mean Radiance: {data.meanFrp} MW</p>
+                    <p className="text-slate-500 dark:text-slate-400">{data.count} active thermal detections</p>
                   </div>
                 );
               }

@@ -15,6 +15,9 @@ export function App() {
   const [mapMode, setMapMode] = useState(() => {
     return localStorage.getItem('thermalwatch_map_mode') || 'hybrid';
   });
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('thermalwatch_theme') || 'dark';
+  });
 
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState('');
@@ -27,6 +30,21 @@ export function App() {
   const [selectedHotspot, setSelectedHotspot] = useState(null);
   const [selectedCluster, setSelectedCluster] = useState(null);
   const [activeRoute, setActiveRoute] = useState(null);
+
+  // Sync theme with document element
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('thermalwatch_theme', theme);
+  }, [theme]);
+
+  // Toggle Theme
+  const handleToggleTheme = useCallback(() => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  }, []);
 
   // Save map mode to localStorage
   const handleSelectMapMode = useCallback((newMode) => {
@@ -119,7 +137,7 @@ export function App() {
   }, [allHotspots, clusters, alerts]);
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-dark-900 overflow-hidden text-slate-100">
+    <div className="flex flex-col h-screen w-screen bg-slate-50 dark:bg-dark-900 overflow-hidden text-slate-900 dark:text-slate-100 transition-colors duration-200">
       {/* Top Navigation Bar */}
       <Navbar
         mode={mode}
@@ -130,6 +148,8 @@ export function App() {
         onSelectSensor={setSelectedSensor}
         mapMode={mapMode}
         onSelectMapMode={handleSelectMapMode}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
         onRefresh={() => loadData(true)}
         loading={loading}
         stats={stats}
@@ -155,13 +175,14 @@ export function App() {
         />
 
         {/* Center / Main GIS Map Area */}
-        <main className="flex-1 relative h-full w-full bg-dark-950 overflow-hidden">
+        <main className="flex-1 relative h-full w-full bg-slate-200 dark:bg-dark-950 overflow-hidden transition-colors duration-200">
           {/* Leaflet Map */}
           <MapView
             hotspots={visibleHotspots}
             clusters={clusters}
             alerts={alerts}
             mapMode={mapMode}
+            theme={theme}
             regionConfig={REGIONS[selectedRegion]}
             selectedHotspot={selectedHotspot}
             activeRoute={activeRoute}
@@ -171,7 +192,7 @@ export function App() {
 
           {/* Floating Emergency Alert Banner */}
           {alerts.length > 0 && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-red-600/90 text-white font-bold text-xs py-2 px-4 rounded-xl shadow-2xl border border-red-400/50 backdrop-blur-md flex items-center gap-2 animate-bounce">
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-red-600/95 text-white font-bold text-xs py-2 px-4 rounded-xl shadow-2xl border border-red-400/50 backdrop-blur-md flex items-center gap-2 animate-bounce">
               <AlertTriangle className="w-4 h-4 text-white" />
               <span>
                 CRITICAL ALERT: {alerts[0].facility_name} — {alerts[0].current_frp} MW Radiance (Z-Score: +{alerts[0].z_score}σ)

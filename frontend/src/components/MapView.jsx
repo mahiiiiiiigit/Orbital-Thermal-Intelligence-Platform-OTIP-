@@ -9,6 +9,7 @@ export function MapView({
   clusters = [],
   alerts = [],
   mapMode = 'hybrid', // 'standard' | 'thermal' | 'hybrid'
+  theme = 'dark',
   regionConfig,
   selectedHotspot,
   activeRoute,
@@ -17,6 +18,7 @@ export function MapView({
 }) {
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
+  const baseTileLayerRef = useRef(null);
   const markersLayerRef = useRef([]);
   const clustersLayerRef = useRef([]);
   const alertsLayerRef = useRef([]);
@@ -33,14 +35,6 @@ export function MapView({
       zoomControl: false,
     });
 
-    // CARTO Raster Basemap Layer with Authenticated Key
-    const cartoKey = import.meta.env.VITE_CARTO_KEY || 'cb1_2jno_1_ef0c23ffe5f8a02710afad82';
-    L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=${cartoKey}`, {
-      attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; NASA FIRMS &copy; OpenRouteService',
-      maxZoom: 19,
-      subdomains: 'abcd',
-    }).addTo(map);
-
     // Reposition zoom controls
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
@@ -51,6 +45,28 @@ export function MapView({
       mapInstanceRef.current = null;
     };
   }, []);
+
+  // Update Tile Layer dynamically on Theme Switch
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    if (baseTileLayerRef.current) {
+      map.removeLayer(baseTileLayerRef.current);
+    }
+
+    const cartoKey = import.meta.env.VITE_CARTO_KEY || 'cb1_2jno_1_ef0c23ffe5f8a02710afad82';
+    const tileStyle = theme === 'dark' ? 'dark_all' : 'rastertiles/voyager';
+    const tileUrl = `https://basemaps.cartocdn.com/${tileStyle}/{z}/{x}/{y}.png?key=${cartoKey}`;
+
+    const newTileLayer = L.tileLayer(tileUrl, {
+      attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; NASA FIRMS &copy; OpenRouteService',
+      maxZoom: 19,
+      subdomains: 'abcd',
+    }).addTo(map);
+
+    baseTileLayerRef.current = newTileLayer;
+  }, [theme]);
 
   // Update Region Pan/Zoom
   useEffect(() => {
