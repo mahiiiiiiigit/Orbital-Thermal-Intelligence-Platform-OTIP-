@@ -31,6 +31,7 @@ from backend.analytics.safety_infrastructure import (
     get_all_safety_resources,
     get_recommended_response_sop,
 )
+from backend.analytics.thermal_fingerprint import build_facility_thermal_profile
 from backend.reports.dossier_generator import generate_dossier
 
 # Load environment variables from .env file if available
@@ -451,6 +452,27 @@ def get_nearest_safety_resources(
         "source_label": "DEMO SAFETY DATA (District Disaster Management Plans)",
         "is_demo": True,
     }
+
+
+@app.get("/api/v1/facilities/{facility_id}/thermal-profile")
+def get_facility_thermal_profile(
+    facility_id: str,
+    mode: str = Query("auto", pattern="^(auto|live|demo)$"),
+    source: str = Query("VIIRS_SNPP_NRT"),
+    days: int = Query(3, ge=1, le=5),
+):
+    """
+    Computes an empirical 30-day thermal fingerprint for an identifiable facility.
+    Evaluates historical mean, standard deviation, Z-score excursion, anomaly frequency,
+    and returns a full historical trend time series.
+    """
+    classified_hotspots, resolved_mode, is_demo, _ = _get_active_hotspots(mode=mode, days=days, source=source)
+    profile = build_facility_thermal_profile(
+        facility_identifier=facility_id,
+        hotspots=classified_hotspots,
+        is_demo=is_demo,
+    )
+    return profile
 
 
 @app.get("/map", include_in_schema=False)

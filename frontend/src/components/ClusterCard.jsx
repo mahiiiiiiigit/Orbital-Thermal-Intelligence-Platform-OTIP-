@@ -4,7 +4,7 @@ import { TAXONOMY_COLORS } from '../constants/taxonomy';
 import { RiskBadge } from './RiskBadge';
 import { getDossierDownloadUrl } from '../services/api';
 
-export function ClusterCard({ cluster, mode = 'demo', onSelectCluster }) {
+export function ClusterCard({ cluster, mode = 'demo', onSelectCluster, onViewFingerprint }) {
   const [showBreakdown, setShowBreakdown] = useState(false);
 
   if (!cluster) {
@@ -129,6 +129,16 @@ export function ClusterCard({ cluster, mode = 'demo', onSelectCluster }) {
           {cluster.reasons[0]}
         </div>
       )}
+
+      {/* Facility Thermal Fingerprint Button */}
+      <button
+        type="button"
+        onClick={() => onViewFingerprint && onViewFingerprint(cluster.facility_name || cluster.cluster_id)}
+        className="flex items-center justify-center gap-2 w-full py-2 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-dark-900 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold rounded-lg shadow-sm transition-all"
+      >
+        <Activity className="w-3.5 h-3.5 text-sky-500" />
+        <span>View Thermal Fingerprint</span>
+      </button>
 
       {/* Compliance Dossier Download */}
       <a

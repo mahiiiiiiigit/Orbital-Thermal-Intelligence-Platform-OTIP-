@@ -30,6 +30,7 @@ export function MapView({
   onSelectCluster,
   onShowTemporaryResources,
   showingTemporaryResources = false,
+  onViewFingerprint,
 }) {
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -393,6 +394,7 @@ export function MapView({
           onShowTemporaryResources={onShowTemporaryResources}
           showingTemporaryResources={showingTemporaryResources}
           onClose={() => onSelectHotspot && onSelectHotspot(null)}
+          onViewFingerprint={onViewFingerprint}
         />,
         popupContainer
       )}

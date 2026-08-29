@@ -30,6 +30,7 @@ export function HotspotCard({
   onShowTemporaryResources,
   showingTemporaryResources = false,
   onClose,
+  onViewFingerprint,
 }) {
   const [loadingRoute, setLoadingRoute] = useState(false);
   const [routeError, setRouteError] = useState(null);
@@ -358,6 +359,18 @@ export function HotspotCard({
           <div className="flex justify-between">
             <span className="text-slate-500 dark:text-slate-400">Forest Division:</span>
             <span className="font-mono text-emerald-600 dark:text-emerald-400">{hotspot.district} ({hotspot.state})</span>
+          </div>
+        )}
+        {(hotspot.facility_name || ['GAS_FLARE', 'PERSISTENT_INDUSTRIAL', 'MINING_ACTIVITY', 'INDUSTRIAL_FIRE'].includes(hotspot.classification)) && (
+          <div className="pt-1.5 border-t border-slate-200 dark:border-slate-800/60">
+            <button
+              type="button"
+              onClick={() => onViewFingerprint && onViewFingerprint(hotspot.facility_name || `${hotspot.latitude?.toFixed(2)},${hotspot.longitude?.toFixed(2)}`)}
+              className="w-full py-1.5 px-2 bg-slate-200/80 hover:bg-slate-300 dark:bg-dark-850 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded font-semibold text-[10.5px] flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+            >
+              <Activity className="w-3 h-3 text-sky-500" />
+              <span>View Facility Thermal Fingerprint</span>
+            </button>
           </div>
         )}
       </div>

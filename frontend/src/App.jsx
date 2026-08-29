@@ -13,6 +13,7 @@ import {
 } from './services/api';
 import { REGIONS } from './constants/taxonomy';
 import { AlertTriangle, Trees } from 'lucide-react';
+import { FacilityFingerprintModal } from './components/FacilityFingerprintModal';
 
 export function App() {
   const [dataSource, setDataSource] = useState('firms'); // 'firms' | 'fsi'
@@ -41,6 +42,7 @@ export function App() {
   const [selectedHotspot, setSelectedHotspot] = useState(null);
   const [selectedCluster, setSelectedCluster] = useState(null);
   const [activeRoute, setActiveRoute] = useState(null);
+  const [selectedFingerprintFacility, setSelectedFingerprintFacility] = useState(null);
 
   // Sync theme with document element
   useEffect(() => {
@@ -224,6 +226,7 @@ export function App() {
           onSelectFilterClass={setFilterClass}
           activeDate={activeDate}
           stats={stats}
+          onViewFingerprint={(facility) => setSelectedFingerprintFacility(facility)}
         />
 
         {/* Center / Main GIS Map Area */}
@@ -245,7 +248,17 @@ export function App() {
             onSelectCluster={handleSelectCluster}
             onShowTemporaryResources={setTemporarySafetyResources}
             showingTemporaryResources={temporarySafetyResources.length > 0}
+            onViewFingerprint={(facility) => setSelectedFingerprintFacility(facility)}
           />
+
+          {/* Facility Thermal Fingerprint Modal Dialog */}
+          {selectedFingerprintFacility && (
+            <FacilityFingerprintModal
+              facilityIdentifier={selectedFingerprintFacility}
+              mode={mode}
+              onClose={() => setSelectedFingerprintFacility(null)}
+            />
+          )}
 
           {/* Floating FSI Demo Data Banner */}
           {dataSource === 'fsi' && (

@@ -22,6 +22,7 @@ export function Sidebar({
   onSelectFilterClass,
   activeDate,
   stats = { totalHotspots: 0, totalClusters: 0, totalAlerts: 0, avgFrp: 0 },
+  onViewFingerprint,
 }) {
   // Count per taxonomy class
   const classCounts = React.useMemo(() => {
@@ -170,7 +171,7 @@ export function Sidebar({
               <Factory className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400" />
               <span>Persistent Cluster</span>
             </div>
-            <ClusterCard cluster={selectedCluster} mode={mode} />
+            <ClusterCard cluster={selectedCluster} mode={mode} onViewFingerprint={onViewFingerprint} />
           </div>
         )}
       </div>

@@ -132,3 +132,13 @@ export async function fetchEmergencyRoute(lat, lon, startLat = null, startLon = 
   }
   return res.json();
 }
+
+export async function fetchFacilityThermalProfile(facilityId, { mode = 'auto', source = 'VIIRS_SNPP_NRT', days = 3 } = {}) {
+  const cleanId = encodeURIComponent(String(facilityId).trim());
+  const res = await fetch(`/api/v1/facilities/${cleanId}/thermal-profile?mode=${mode}&source=${source}&days=${days}`);
+  if (!res.ok) {
+    throw new Error(`Failed to load facility thermal profile (${res.status})`);
+  }
+  return res.json();
+}
+
