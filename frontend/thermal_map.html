@@ -732,9 +732,9 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <script>
     const map = L.map("map").setView([25.5, 74], 5);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    L.tileLayer("https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=MY_CARTO_KEY", {
       maxZoom: 18,
-      attribution: "&copy; OpenStreetMap contributors",
+      attribution: "&copy; CARTO &copy; OpenStreetMap contributors",
     }).addTo(map);
 
     function markerColor(classification) {

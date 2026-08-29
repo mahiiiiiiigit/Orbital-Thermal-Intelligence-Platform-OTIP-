@@ -33,8 +33,9 @@ export function MapView({
       zoomControl: false,
     });
 
-    // Dark Tile Layer (CartoDB Dark Matter)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    // CARTO Raster Basemap Layer with Key parameter
+    const cartoKey = import.meta.env.VITE_CARTO_KEY || 'MY_CARTO_KEY';
+    L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=${cartoKey}`, {
       attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; NASA FIRMS &copy; OpenRouteService',
       maxZoom: 19,
       subdomains: 'abcd',
