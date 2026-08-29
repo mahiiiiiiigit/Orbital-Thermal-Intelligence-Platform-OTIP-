@@ -48,3 +48,11 @@ export async function fetchAlerts({ mode = 'auto', source = 'VIIRS_SNPP_NRT' } =
 export function getDossierDownloadUrl(clusterId = 'jamnagar-refinery', mode = 'demo') {
   return `/api/v1/reports/${clusterId}/dossier?mode=${mode}`;
 }
+
+export async function fetchEmergencyRoute(lat, lon) {
+  const res = await fetch(`/api/v1/routing/emergency-route?lat=${lat}&lon=${lon}`);
+  if (!res.ok) {
+    throw new Error(`Failed to calculate emergency dispatch route (${res.status})`);
+  }
+  return res.json();
+}

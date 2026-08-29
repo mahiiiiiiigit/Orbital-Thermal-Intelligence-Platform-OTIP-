@@ -1,9 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ConfidenceBadge, RiskBadge } from './RiskBadge';
 import { TAXONOMY_COLORS } from '../constants/taxonomy';
-import { Flame, ShieldAlert, CheckCircle2, Navigation, Activity, Clock } from 'lucide-react';
+import { Flame, ShieldAlert, CheckCircle2, Navigation, Activity, Clock, Truck, X } from 'lucide-react';
+import { fetchEmergencyRoute } from '../services/api';
 
-export function HotspotCard({ hotspot }) {
+export function HotspotCard({ hotspot, activeRoute, onSetRoute }) {
+  const [loadingRoute, setLoadingRoute] = useState(false);
+  const [routeError, setRouteError] = useState(null);
+
   if (!hotspot) {
     return (
       <div className="bg-dark-850/80 border border-slate-800/80 rounded-xl p-4 text-center">
@@ -18,6 +22,25 @@ export function HotspotCard({ hotspot }) {
   const reasons = hotspot.reasons && hotspot.reasons.length > 0
     ? hotspot.reasons
     : [hotspot.explanation || 'Thermal signature evaluated by decision engine.'];
+
+  const handleCalculateRoute = async () => {
+    if (activeRoute) {
+      onSetRoute(null);
+      return;
+    }
+
+    setLoadingRoute(true);
+    setRouteError(null);
+    try {
+      const data = await fetchEmergencyRoute(hotspot.latitude, hotspot.longitude);
+      onSetRoute(data);
+    } catch (err) {
+      console.error(err);
+      setRouteError('Failed to calculate road route');
+    } finally {
+      setLoadingRoute(false);
+    }
+  };
 
   return (
     <div className="bg-dark-850/90 border border-slate-800 rounded-xl p-4 space-y-3.5 shadow-xl backdrop-blur-md">
@@ -88,6 +111,66 @@ export function HotspotCard({ hotspot }) {
             <RiskBadge level={hotspot.risk_level || 'medium'} />
           </div>
         </div>
+      </div>
+
+      {/* Emergency First Responder Route Dispatch Button & Info */}
+      <div className="bg-dark-900/90 border border-slate-800 rounded-lg p-2.5 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1">
+            <Truck className="w-3.5 h-3.5 text-amber-400" />
+            <span>Emergency Dispatch Route</span>
+          </span>
+          <span className="text-[10px] text-slate-500 font-mono">OpenRouteService</span>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleCalculateRoute}
+          disabled={loadingRoute}
+          className={`w-full py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+            activeRoute
+              ? 'bg-rose-600 hover:bg-rose-500 text-white'
+              : 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white shadow-md'
+          }`}
+        >
+          {loadingRoute ? (
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Calculating road route...
+            </span>
+          ) : activeRoute ? (
+            <>
+              <X className="w-3.5 h-3.5" />
+              <span>Clear Emergency Route</span>
+            </>
+          ) : (
+            <>
+              <Navigation className="w-3.5 h-3.5" />
+              <span>Calculate First-Responder Route</span>
+            </>
+          )}
+        </button>
+
+        {activeRoute && activeRoute.route && (
+          <div className="bg-dark-950/80 border border-amber-500/30 rounded-lg p-2.5 space-y-1.5 text-xs">
+            <div className="flex justify-between items-center">
+              <span className="text-slate-400">Nearest Base:</span>
+              <span className="font-semibold text-slate-200 text-right truncate max-w-[170px]">
+                {activeRoute.origin_depot?.name}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-400">Road Distance:</span>
+              <span className="font-mono text-amber-400 font-bold">{activeRoute.route.distance_km} km</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-400">Estimated Response Time:</span>
+              <span className="font-mono text-emerald-400 font-bold">{activeRoute.route.duration_minutes} mins</span>
+            </div>
+          </div>
+        )}
+
+        {routeError && <p className="text-[11px] text-red-400">{routeError}</p>}
       </div>
 
       {/* Why Classified? Decision Reasoning */}

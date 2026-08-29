@@ -18,6 +18,10 @@ from backend.ingestion.firms_client import (
     fetch_firms_hotspots,
     firms_cache,
 )
+from backend.analytics.routing import (
+    calculate_emergency_route,
+    find_nearest_emergency_depot,
+)
 from backend.reports.dossier_generator import generate_dossier
 
 # Load environment variables from .env file if available
@@ -274,6 +278,37 @@ def get_spatiotemporal_clusters(
         "mode": resolved_mode,
         "total_clusters": len(clusters),
         "clusters": clusters,
+    }
+
+
+@app.get("/api/v1/routing/emergency-route")
+def get_emergency_route(
+    lat: float = Query(..., ge=-90.0, le=90.0, description="Target hotspot latitude"),
+    lon: float = Query(..., ge=-180.0, le=180.0, description="Target hotspot longitude"),
+    start_lat: Optional[float] = Query(None, description="Optional custom dispatch station latitude"),
+    start_lon: Optional[float] = Query(None, description="Optional custom dispatch station longitude"),
+):
+    """
+    Computes emergency response road driving route from the nearest
+    fire station/depot to the thermal anomaly coordinates using OpenRouteService.
+    """
+    if start_lat is not None and start_lon is not None:
+        origin = {"name": "Custom Incident Command Unit", "latitude": start_lat, "longitude": start_lon}
+        origin_dist = 0.0
+    else:
+        origin, origin_dist = find_nearest_emergency_depot(lat, lon)
+
+    route_data = calculate_emergency_route(
+        start_lat=origin["latitude"],
+        start_lon=origin["longitude"],
+        dest_lat=lat,
+        dest_lon=lon,
+    )
+
+    return {
+        "origin_depot": origin,
+        "target_coords": {"latitude": lat, "longitude": lon},
+        "route": route_data,
     }
 
 

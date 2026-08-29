@@ -11,6 +11,7 @@ export function MapView({
   mapMode = 'hybrid', // 'standard' | 'thermal' | 'hybrid'
   regionConfig,
   selectedHotspot,
+  activeRoute,
   onSelectHotspot,
   onSelectCluster,
 }) {
@@ -19,6 +20,7 @@ export function MapView({
   const markersLayerRef = useRef([]);
   const clustersLayerRef = useRef([]);
   const alertsLayerRef = useRef([]);
+  const routeLayersRef = useRef([]);
   const heatLayerRef = useRef(null);
 
   // Initialize Map
@@ -33,7 +35,7 @@ export function MapView({
 
     // Dark Tile Layer (CartoDB Dark Matter)
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; NASA FIRMS',
+      attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; NASA FIRMS &copy; OpenRouteService',
       maxZoom: 19,
       subdomains: 'abcd',
     }).addTo(map);
@@ -52,13 +54,14 @@ export function MapView({
   // Update Region Pan/Zoom
   useEffect(() => {
     if (!mapInstanceRef.current || !regionConfig) return;
+    if (activeRoute) return; // Don't override route zoom
     mapInstanceRef.current.flyTo(regionConfig.center, regionConfig.zoom, {
       duration: 1.2,
       easeLinearity: 0.25,
     });
-  }, [regionConfig]);
+  }, [regionConfig, activeRoute]);
 
-  // Render Overlays according to mapMode
+  // Render Overlays according to mapMode and telemetry
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
@@ -193,6 +196,58 @@ export function MapView({
     });
 
   }, [hotspots, clusters, alerts, mapMode]);
+
+  // Render Active Emergency Dispatch Route Polyline
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    routeLayersRef.current.forEach((l) => map.removeLayer(l));
+    routeLayersRef.current = [];
+
+    if (!activeRoute || !activeRoute.route || !activeRoute.route.coordinates) return;
+
+    const coords = activeRoute.route.coordinates;
+    if (coords.length === 0) return;
+
+    // Glowing casing polyline
+    const glowLine = L.polyline(coords, {
+      color: '#f59e0b',
+      weight: 7,
+      opacity: 0.45,
+    }).addTo(map);
+
+    // Inner route polyline
+    const routeLine = L.polyline(coords, {
+      color: '#38bdf8',
+      weight: 3.5,
+      opacity: 0.95,
+      dashArray: '6, 6',
+    }).addTo(map);
+
+    // Origin Fire Station Marker
+    const depot = activeRoute.origin_depot;
+    let depotMarker = null;
+    if (depot) {
+      const depotIcon = L.divIcon({
+        className: '',
+        html: '<div style="background:#f59e0b; color:#000; padding:2px 6px; border-radius:6px; font-weight:bold; font-size:10px; border:1px solid #fff; box-shadow:0 4px 12px rgba(0,0,0,0.5);">🚒 BASE</div>',
+        iconSize: [50, 20],
+        iconAnchor: [25, 10],
+      });
+      depotMarker = L.marker([depot.latitude, depot.longitude], { icon: depotIcon })
+        .addTo(map)
+        .bindTooltip(`<strong>${depot.name}</strong><br/>Emergency Response Dispatch Point`, { permanent: false, direction: 'top' });
+    }
+
+    routeLayersRef.current = [glowLine, routeLine];
+    if (depotMarker) routeLayersRef.current.push(depotMarker);
+
+    // Fit map bounds to show complete route
+    const bounds = L.latLngBounds(coords);
+    map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+
+  }, [activeRoute]);
 
   return (
     <div className="relative w-full h-full">

@@ -12,6 +12,8 @@ export function Sidebar({
   alerts = [],
   selectedHotspot,
   selectedCluster,
+  activeRoute = null,
+  onSetRoute,
   mode = 'auto',
   notice = '',
   filterClass = 'all',
@@ -124,7 +126,11 @@ export function Sidebar({
             <Activity className="w-3.5 h-3.5 text-sky-400" />
             <span>Inspection Telemetry</span>
           </div>
-          <HotspotCard hotspot={selectedHotspot} />
+          <HotspotCard
+            hotspot={selectedHotspot}
+            activeRoute={activeRoute}
+            onSetRoute={onSetRoute}
+          />
         </div>
 
         {/* FRP Radiance Trend Chart */}

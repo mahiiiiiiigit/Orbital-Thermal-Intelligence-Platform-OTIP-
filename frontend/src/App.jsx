@@ -9,7 +9,7 @@ import { REGIONS } from './constants/taxonomy';
 import { AlertTriangle } from 'lucide-react';
 
 export function App() {
-  const [mode, setMode] = useState('demo'); // 'demo' | 'auto'
+  const [mode, setMode] = useState('auto'); // 'auto' (Live NASA) | 'demo'
   const [selectedRegion, setSelectedRegion] = useState('india');
   const [selectedSensor, setSelectedSensor] = useState('VIIRS_SNPP_NRT');
   const [mapMode, setMapMode] = useState(() => {
@@ -26,6 +26,7 @@ export function App() {
   const [filterClass, setFilterClass] = useState('all');
   const [selectedHotspot, setSelectedHotspot] = useState(null);
   const [selectedCluster, setSelectedCluster] = useState(null);
+  const [activeRoute, setActiveRoute] = useState(null);
 
   // Save map mode to localStorage
   const handleSelectMapMode = useCallback((newMode) => {
@@ -143,6 +144,8 @@ export function App() {
           alerts={alerts}
           selectedHotspot={selectedHotspot}
           selectedCluster={selectedCluster}
+          activeRoute={activeRoute}
+          onSetRoute={setActiveRoute}
           mode={mode}
           notice={notice}
           filterClass={filterClass}
@@ -161,6 +164,7 @@ export function App() {
             mapMode={mapMode}
             regionConfig={REGIONS[selectedRegion]}
             selectedHotspot={selectedHotspot}
+            activeRoute={activeRoute}
             onSelectHotspot={(h) => setSelectedHotspot(h)}
             onSelectCluster={(c) => setSelectedCluster(c)}
           />
