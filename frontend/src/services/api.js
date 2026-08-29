@@ -61,6 +61,42 @@ export async function fetchFsiFfdrGrid({
   return res.json();
 }
 
+export async function fetchSafetyResources({
+  type = null,
+  state = null,
+} = {}) {
+  const params = new URLSearchParams();
+  if (type) params.set('resource_type', type);
+  if (state) params.set('state', state);
+
+  const res = await fetch(`/api/v1/safety/resources?${params.toString()}`);
+  if (!res.ok) {
+    throw new Error(`Safety Resources API error (${res.status}): ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchNearestSafetyResources({
+  lat,
+  lon,
+  classification = 'UNCLASSIFIED',
+  frp = 25.0,
+  riskScore = 50.0,
+}) {
+  const params = new URLSearchParams();
+  params.set('lat', String(lat));
+  params.set('lon', String(lon));
+  params.set('classification', classification);
+  params.set('frp', String(frp));
+  params.set('risk_score', String(riskScore));
+
+  const res = await fetch(`/api/v1/safety/nearest?${params.toString()}`);
+  if (!res.ok) {
+    throw new Error(`Nearest Safety API error (${res.status}): ${res.statusText}`);
+  }
+  return res.json();
+}
+
 export async function fetchClusters({ mode = 'auto', source = 'VIIRS_SNPP_NRT' } = {}) {
   const res = await fetch(`/api/v1/clusters/persistent?mode=${mode}&source=${source}`);
   if (!res.ok) {
@@ -81,8 +117,16 @@ export function getDossierDownloadUrl(clusterId = 'jamnagar-refinery', mode = 'd
   return `/api/v1/reports/${clusterId}/dossier?mode=${mode}`;
 }
 
-export async function fetchEmergencyRoute(lat, lon) {
-  const res = await fetch(`/api/v1/routing/emergency-route?lat=${lat}&lon=${lon}`);
+export async function fetchEmergencyRoute(lat, lon, startLat = null, startLon = null) {
+  const params = new URLSearchParams();
+  params.set('lat', String(lat));
+  params.set('lon', String(lon));
+  if (startLat !== null && startLon !== null) {
+    params.set('start_lat', String(startLat));
+    params.set('start_lon', String(startLon));
+  }
+
+  const res = await fetch(`/api/v1/routing/emergency-route?${params.toString()}`);
   if (!res.ok) {
     throw new Error(`Failed to calculate emergency dispatch route (${res.status})`);
   }

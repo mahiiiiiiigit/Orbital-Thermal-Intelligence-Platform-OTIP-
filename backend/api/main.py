@@ -26,6 +26,11 @@ from backend.analytics.routing import (
     calculate_emergency_route,
     find_nearest_emergency_depot,
 )
+from backend.analytics.safety_infrastructure import (
+    find_nearest_safety_resources,
+    get_all_safety_resources,
+    get_recommended_response_sop,
+)
 from backend.reports.dossier_generator import generate_dossier
 
 # Load environment variables from .env file if available
@@ -395,6 +400,57 @@ def get_fsi_ffdr_grid(
     geojson["features"] = features
     geojson["metadata"]["total_grids"] = len(features)
     return geojson
+
+
+@app.get("/api/v1/safety/resources")
+def get_safety_resources(
+    resource_type: Optional[str] = Query(None, description="Filter by type: fire_station, hospital, police, ambulance, shelter"),
+    state: Optional[str] = Query(None, description="Filter by Indian State"),
+):
+    """Returns all registered emergency response and safety infrastructure resources."""
+    resources = get_all_safety_resources(resource_type=resource_type, state=state)
+    return {
+        "total_resources": len(resources),
+        "resources": resources,
+    }
+
+
+@app.get("/api/v1/safety/nearest")
+def get_nearest_safety_resources(
+    lat: float = Query(..., ge=-90.0, le=90.0, description="Event latitude"),
+    lon: float = Query(..., ge=-180.0, le=180.0, description="Event longitude"),
+    classification: str = Query("UNCLASSIFIED", description="Thermal classification class"),
+    frp: float = Query(25.0, description="Radiative Power (MW)"),
+    risk_score: float = Query(50.0, description="Risk Score (0-100)"),
+):
+    """
+    Returns incident response triage packet containing nearest Fire, Hospital, Police,
+    Ambulance, and Shelter facilities, national emergency numbers (112), and classification SOPs.
+    """
+    nearest_map = find_nearest_safety_resources(latitude=lat, longitude=lon)
+    sop = get_recommended_response_sop(classification=classification, risk_level="CRITICAL" if risk_score >= 80 else "HIGH", frp=frp)
+
+    return {
+        "event": {
+            "classification": classification,
+            "frp": frp,
+            "risk_score": risk_score,
+            "latitude": lat,
+            "longitude": lon,
+        },
+        "nearest_resources": nearest_map,
+        "emergency_contacts": {
+            "national_emergency": "112",
+            "fire_service": "101",
+            "ambulance_service": "108",
+            "police_control": "100",
+            "disaster_management_helpline": "1078",
+            "state_emergency_helpline": "1070",
+        },
+        "recommended_response": sop,
+        "source_label": "DEMO SAFETY DATA (District Disaster Management Plans)",
+        "is_demo": True,
+    }
 
 
 @app.get("/map", include_in_schema=False)

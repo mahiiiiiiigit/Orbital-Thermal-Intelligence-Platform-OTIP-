@@ -4,11 +4,29 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet.heat';
 import { TAXONOMY_COLORS, THERMAL_GRADIENT, FFDR_COLORS } from '../constants/taxonomy';
 
+const SAFETY_ICONS = {
+  fire_station: '🚒',
+  hospital: '🏥',
+  police: '👮',
+  ambulance: '🚑',
+  shelter: '🏠',
+};
+
+const SAFETY_COLORS = {
+  fire_station: '#ef4444',
+  hospital: '#06b6d4',
+  police: '#3b82f6',
+  ambulance: '#f59e0b',
+  shelter: '#8b5cf6',
+};
+
 export function MapView({
   hotspots = [],
   clusters = [],
   alerts = [],
   ffdrGrid = null,
+  safetyResources = [],
+  showSafetyResources = true,
   mapMode = 'hybrid', // 'standard' | 'thermal' | 'hybrid' | 'forest_risk'
   theme = 'dark',
   regionConfig,
@@ -23,6 +41,7 @@ export function MapView({
   const markersLayerRef = useRef([]);
   const clustersLayerRef = useRef([]);
   const alertsLayerRef = useRef([]);
+  const safetyLayerRef = useRef([]);
   const routeLayersRef = useRef([]);
   const ffdrLayerRef = useRef(null);
   const heatLayerRef = useRef(null);
@@ -80,7 +99,7 @@ export function MapView({
     });
   }, [regionConfig, activeRoute]);
 
-  // Render Overlays according to mapMode and telemetry
+  // Render Overlays according to mapMode, telemetry, and safety infrastructure
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
@@ -94,6 +113,9 @@ export function MapView({
 
     alertsLayerRef.current.forEach((a) => map.removeLayer(a));
     alertsLayerRef.current = [];
+
+    safetyLayerRef.current.forEach((s) => map.removeLayer(s));
+    safetyLayerRef.current = [];
 
     if (ffdrLayerRef.current) {
       map.removeLayer(ffdrLayerRef.current);
@@ -152,7 +174,62 @@ export function MapView({
       }).addTo(map);
     }
 
-    // 3. Render Heatmap Layer (Thermal & Hybrid modes)
+    // 3. Render Emergency Safety Infrastructure Resources
+    if (showSafetyResources && safetyResources.length > 0) {
+      safetyResources.forEach((res) => {
+        const iconEmoji = SAFETY_ICONS[res.type] || '🛡️';
+        const color = SAFETY_COLORS[res.type] || '#38bdf8';
+
+        const customIcon = L.divIcon({
+          className: '',
+          html: `
+            <div style="
+              background: ${color};
+              color: #ffffff;
+              width: 26px;
+              height: 26px;
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 13px;
+              border: 2px solid #ffffff;
+              box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+              cursor: pointer;
+            ">
+              ${iconEmoji}
+            </div>
+          `,
+          iconSize: [26, 26],
+          iconAnchor: [13, 13],
+        });
+
+        const popupContent = `
+          <div style="font-family:system-ui, sans-serif; font-size:12px; line-height:1.45; min-width:240px; max-width:290px; color:#f8fafc;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:4px;">
+              <strong style="color:${color}; font-size:13px;">${iconEmoji} ${res.name}</strong>
+            </div>
+            <div><strong>Category:</strong> ${res.type.replace('_', ' ').toUpperCase()}</div>
+            <div><strong>Location:</strong> ${res.district}, ${res.state}</div>
+            <div><strong>Contact:</strong> <span style="font-family:monospace; color:#4ade80;">${res.contact}</span></div>
+            ${res.notes ? `<div style="font-size:11px; color:#94a3b8; margin-top:2px;"><strong>Capability:</strong> ${res.notes}</div>` : ''}
+            <div style="margin-top:6px; background:rgba(15,23,42,0.85); border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:4px 6px; font-size:10px; color:#94a3b8; display:flex; justify-content:space-between;">
+              <span>Source: ${res.source}</span>
+              <span>Verified: ${res.last_verified}</span>
+            </div>
+          </div>
+        `;
+
+        const marker = L.marker([res.latitude, res.longitude], { icon: customIcon })
+          .addTo(map)
+          .bindPopup(popupContent)
+          .bindTooltip(`<strong>${iconEmoji} ${res.name}</strong><br/>${res.type.toUpperCase()}`, { direction: 'top' });
+
+        safetyLayerRef.current.push(marker);
+      });
+    }
+
+    // 4. Render Heatmap Layer (Thermal & Hybrid modes)
     if (mapMode === 'thermal' || mapMode === 'hybrid') {
       const heatPoints = hotspots.map((h) => {
         const weight = Math.min(1.0, Math.max(0.12, (h.frp || 5.0) / 80.0));
@@ -170,7 +247,7 @@ export function MapView({
       }
     }
 
-    // 4. Render Cluster Boundaries (Standard, Hybrid & Forest Risk modes)
+    // 5. Render Cluster Boundaries (Standard, Hybrid & Forest Risk modes)
     if (mapMode === 'standard' || mapMode === 'hybrid' || mapMode === 'forest_risk') {
       clusters.forEach((cluster) => {
         const isFire = cluster.classification === 'INDUSTRIAL_FIRE';
@@ -197,7 +274,7 @@ export function MapView({
       });
     }
 
-    // 5. Render Hotspot Markers (Standard, Hybrid & Forest Risk modes)
+    // 6. Render Hotspot Markers (Standard, Hybrid & Forest Risk modes)
     if (mapMode === 'standard' || mapMode === 'hybrid' || mapMode === 'forest_risk') {
       hotspots.forEach((hotspot) => {
         const isSpike = hotspot.classification === 'INDUSTRIAL_FIRE' || (hotspot.frp >= 90);
@@ -247,7 +324,7 @@ export function MapView({
       });
     }
 
-    // 6. Render Anomaly Spikes Pulse Icons
+    // 7. Render Anomaly Spikes Pulse Icons
     alerts.forEach((alt) => {
       const anomalyIcon = L.divIcon({
         className: '',
@@ -271,7 +348,7 @@ export function MapView({
       alertsLayerRef.current.push(alertMarker);
     });
 
-  }, [hotspots, clusters, alerts, ffdrGrid, mapMode]);
+  }, [hotspots, clusters, alerts, ffdrGrid, safetyResources, showSafetyResources, mapMode]);
 
   // Render Active Emergency Dispatch Route Polyline
   useEffect(() => {

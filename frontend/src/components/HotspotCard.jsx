@@ -1,10 +1,22 @@
 import React, { useState } from 'react';
 import { ConfidenceBadge, RiskBadge, DangerBadge } from './RiskBadge';
 import { TAXONOMY_COLORS } from '../constants/taxonomy';
-import { Flame, ShieldAlert, CheckCircle2, Navigation, Activity, Clock, Truck, X, Trees, AlertOctagon } from 'lucide-react';
+import {
+  Flame,
+  ShieldAlert,
+  CheckCircle2,
+  Navigation,
+  Activity,
+  Clock,
+  Truck,
+  X,
+  Trees,
+  AlertOctagon,
+  LifeBuoy,
+} from 'lucide-react';
 import { fetchEmergencyRoute } from '../services/api';
 
-export function HotspotCard({ hotspot, activeRoute, onSetRoute }) {
+export function HotspotCard({ hotspot, activeRoute, onSetRoute, onOpenResponsePanel }) {
   const [loadingRoute, setLoadingRoute] = useState(false);
   const [routeError, setRouteError] = useState(null);
 
@@ -18,7 +30,7 @@ export function HotspotCard({ hotspot, activeRoute, onSetRoute }) {
     );
   }
 
-  const isFsiDemo = hotspot.source === 'DEMO_FSI' || hotspot.is_demo === true && hotspot.fire_danger_level;
+  const isFsiDemo = hotspot.source === 'DEMO_FSI' || (hotspot.is_demo === true && hotspot.fire_danger_level);
   const color = TAXONOMY_COLORS[hotspot.classification] || '#94a3b8';
   const reasons = hotspot.reasons && hotspot.reasons.length > 0
     ? hotspot.reasons
@@ -85,6 +97,16 @@ export function HotspotCard({ hotspot, activeRoute, onSetRoute }) {
           <span>LARGE FOREST FIRE EXCURSION (High Intensity Spatial Cluster)</span>
         </div>
       )}
+
+      {/* RESPOND Button - Primary Incident Action */}
+      <button
+        type="button"
+        onClick={() => onOpenResponsePanel && onOpenResponsePanel(hotspot)}
+        className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 transition-all transform active:scale-95"
+      >
+        <LifeBuoy className="w-4 h-4 text-white animate-spin-slow" />
+        <span>RESPOND (Emergency Resources &amp; SOP)</span>
+      </button>
 
       {/* Telemetry Grid */}
       <div className="grid grid-cols-2 gap-2 text-xs">

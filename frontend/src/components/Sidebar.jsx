@@ -14,6 +14,7 @@ export function Sidebar({
   selectedCluster,
   activeRoute = null,
   onSetRoute,
+  onOpenResponsePanel,
   mode = 'auto',
   notice = '',
   filterClass = 'all',
@@ -130,6 +131,7 @@ export function Sidebar({
             hotspot={selectedHotspot}
             activeRoute={activeRoute}
             onSetRoute={onSetRoute}
+            onOpenResponsePanel={onOpenResponsePanel}
           />
         </div>
 
