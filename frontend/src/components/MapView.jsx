@@ -4,15 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet.heat';
 import { TAXONOMY_COLORS, THERMAL_GRADIENT, FFDR_COLORS } from '../constants/taxonomy';
 
-const SAFETY_ICONS = {
-  fire_station: '🚒',
-  hospital: '🏥',
-  police: '👮',
-  ambulance: '🚑',
-  shelter: '🏠',
-};
-
-const SAFETY_COLORS = {
+const TYPE_COLORS = {
   fire_station: '#ef4444',
   hospital: '#06b6d4',
   police: '#3b82f6',
@@ -25,8 +17,7 @@ export function MapView({
   clusters = [],
   alerts = [],
   ffdrGrid = null,
-  safetyResources = [],
-  showSafetyResources = true,
+  temporarySafetyResources = [],
   mapMode = 'hybrid', // 'standard' | 'thermal' | 'hybrid' | 'forest_risk'
   theme = 'dark',
   regionConfig,
@@ -41,7 +32,7 @@ export function MapView({
   const markersLayerRef = useRef([]);
   const clustersLayerRef = useRef([]);
   const alertsLayerRef = useRef([]);
-  const safetyLayerRef = useRef([]);
+  const temporarySafetyLayerRef = useRef([]);
   const routeLayersRef = useRef([]);
   const ffdrLayerRef = useRef(null);
   const heatLayerRef = useRef(null);
@@ -99,7 +90,7 @@ export function MapView({
     });
   }, [regionConfig, activeRoute]);
 
-  // Render Overlays according to mapMode, telemetry, and safety infrastructure
+  // Render Overlays according to mapMode, telemetry, and temporary resources
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
@@ -114,8 +105,8 @@ export function MapView({
     alertsLayerRef.current.forEach((a) => map.removeLayer(a));
     alertsLayerRef.current = [];
 
-    safetyLayerRef.current.forEach((s) => map.removeLayer(s));
-    safetyLayerRef.current = [];
+    temporarySafetyLayerRef.current.forEach((s) => map.removeLayer(s));
+    temporarySafetyLayerRef.current = [];
 
     if (ffdrLayerRef.current) {
       map.removeLayer(ffdrLayerRef.current);
@@ -174,58 +165,39 @@ export function MapView({
       }).addTo(map);
     }
 
-    // 3. Render Emergency Safety Infrastructure Resources
-    if (showSafetyResources && safetyResources.length > 0) {
-      safetyResources.forEach((res) => {
-        const iconEmoji = SAFETY_ICONS[res.type] || '🛡️';
-        const color = SAFETY_COLORS[res.type] || '#38bdf8';
+    // 3. Render Contextual Temporary Safety Resources (Only when toggled by analyst for active incident)
+    if (temporarySafetyResources && temporarySafetyResources.length > 0) {
+      temporarySafetyResources.forEach((res) => {
+        const typeLabel = res.type ? res.type.replace('_', ' ').toUpperCase() : 'SAFETY ASSET';
+        const color = TYPE_COLORS[res.type] || '#38bdf8';
 
-        const customIcon = L.divIcon({
-          className: '',
-          html: `
-            <div style="
-              background: ${color};
-              color: #ffffff;
-              width: 26px;
-              height: 26px;
-              border-radius: 50%;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              font-size: 13px;
-              border: 2px solid #ffffff;
-              box-shadow: 0 3px 8px rgba(0,0,0,0.4);
-              cursor: pointer;
-            ">
-              ${iconEmoji}
-            </div>
-          `,
-          iconSize: [26, 26],
-          iconAnchor: [13, 13],
-        });
+        const marker = L.circleMarker([res.latitude, res.longitude], {
+          radius: 6,
+          color: '#ffffff',
+          fillColor: color,
+          fillOpacity: 0.95,
+          weight: 1.8,
+        }).addTo(map);
 
-        const popupContent = `
-          <div style="font-family:system-ui, sans-serif; font-size:12px; line-height:1.45; min-width:240px; max-width:290px; color:#f8fafc;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:4px;">
-              <strong style="color:${color}; font-size:13px;">${iconEmoji} ${res.name}</strong>
+        marker.bindTooltip(
+          `<strong>${typeLabel}</strong>: ${res.name}`,
+          { sticky: true, direction: 'top' }
+        );
+
+        marker.bindPopup(`
+          <div style="font-family:system-ui, sans-serif; font-size:12px; line-height:1.4; min-width:220px; color:#f8fafc;">
+            <div style="font-weight:bold; font-size:13px; color:${color}; margin-bottom:4px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:3px;">
+              ${res.name}
             </div>
-            <div><strong>Category:</strong> ${res.type.replace('_', ' ').toUpperCase()}</div>
-            <div><strong>Location:</strong> ${res.district}, ${res.state}</div>
-            <div><strong>Contact:</strong> <span style="font-family:monospace; color:#4ade80;">${res.contact}</span></div>
-            ${res.notes ? `<div style="font-size:11px; color:#94a3b8; margin-top:2px;"><strong>Capability:</strong> ${res.notes}</div>` : ''}
-            <div style="margin-top:6px; background:rgba(15,23,42,0.85); border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:4px 6px; font-size:10px; color:#94a3b8; display:flex; justify-content:space-between;">
-              <span>Source: ${res.source}</span>
-              <span>Verified: ${res.last_verified}</span>
-            </div>
+            <div><strong>Type:</strong> ${typeLabel}</div>
+            <div><strong>Location:</strong> ${res.district || ''}, ${res.state || ''}</div>
+            <div><strong>Contact:</strong> ${res.contact || '112'}</div>
+            ${res.distance_km ? `<div><strong>Distance:</strong> ${res.distance_km} km (ETA: ${res.estimated_travel_time_mins || '-'} min)</div>` : ''}
+            <div style="margin-top:4px; font-size:10px; color:#94a3b8;">Source: ${res.source || 'State Disaster Plan'}</div>
           </div>
-        `;
+        `);
 
-        const marker = L.marker([res.latitude, res.longitude], { icon: customIcon })
-          .addTo(map)
-          .bindPopup(popupContent)
-          .bindTooltip(`<strong>${iconEmoji} ${res.name}</strong><br/>${res.type.toUpperCase()}`, { direction: 'top' });
-
-        safetyLayerRef.current.push(marker);
+        temporarySafetyLayerRef.current.push(marker);
       });
     }
 
@@ -348,7 +320,7 @@ export function MapView({
       alertsLayerRef.current.push(alertMarker);
     });
 
-  }, [hotspots, clusters, alerts, ffdrGrid, safetyResources, showSafetyResources, mapMode]);
+  }, [hotspots, clusters, alerts, ffdrGrid, temporarySafetyResources, mapMode]);
 
   // Render Active Emergency Dispatch Route Polyline
   useEffect(() => {
@@ -378,15 +350,15 @@ export function MapView({
       dashArray: '6, 6',
     }).addTo(map);
 
-    // Origin Fire Station Marker
+    // Origin Base Marker (clean text badge, no emojis)
     const depot = activeRoute.origin_depot;
     let depotMarker = null;
     if (depot) {
       const depotIcon = L.divIcon({
         className: '',
-        html: '<div style="background:#f59e0b; color:#000; padding:2px 6px; border-radius:6px; font-weight:bold; font-size:10px; border:1px solid #fff; box-shadow:0 4px 12px rgba(0,0,0,0.5);">🚒 BASE</div>',
-        iconSize: [50, 20],
-        iconAnchor: [25, 10],
+        html: '<div style="background:#0284c7; color:#fff; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:10px; border:1px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,0.5);">DISPATCH ORIGIN</div>',
+        iconSize: [100, 20],
+        iconAnchor: [50, 10],
       });
       depotMarker = L.marker([depot.latitude, depot.longitude], { icon: depotIcon })
         .addTo(map)

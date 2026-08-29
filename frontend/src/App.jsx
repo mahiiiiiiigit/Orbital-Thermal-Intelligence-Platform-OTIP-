@@ -4,17 +4,12 @@ import { Sidebar } from './components/Sidebar';
 import { MapView } from './components/MapView';
 import { TimelineSlider } from './components/TimelineSlider';
 import { ThermalLegend } from './components/ThermalLegend';
-import { SafetyLegend } from './components/SafetyLegend';
-import { ResponsePanel } from './components/ResponsePanel';
 import {
   fetchHotspots,
   fetchClusters,
   fetchAlerts,
   fetchFsiForestFires,
   fetchFsiFfdrGrid,
-  fetchSafetyResources,
-  fetchNearestSafetyResources,
-  fetchEmergencyRoute,
 } from './services/api';
 import { REGIONS } from './constants/taxonomy';
 import { AlertTriangle, Trees } from 'lucide-react';
@@ -37,19 +32,15 @@ export function App() {
   const [clusters, setClusters] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [ffdrGrid, setFfdrGrid] = useState(null);
-  const [safetyResources, setSafetyResources] = useState([]);
-  const [showSafetyResources, setShowSafetyResources] = useState(true);
+
+  // Temporary Safety Resources (Only displayed when analyst clicks "Show on Map" for an active incident)
+  const [temporarySafetyResources, setTemporarySafetyResources] = useState([]);
 
   const [timelineIndex, setTimelineIndex] = useState(0);
   const [filterClass, setFilterClass] = useState('all');
   const [selectedHotspot, setSelectedHotspot] = useState(null);
   const [selectedCluster, setSelectedCluster] = useState(null);
   const [activeRoute, setActiveRoute] = useState(null);
-
-  // Response Panel State
-  const [responsePanelHotspot, setResponsePanelHotspot] = useState(null);
-  const [nearestTriageData, setNearestTriageData] = useState(null);
-  const [loadingTriage, setLoadingTriage] = useState(false);
 
   // Sync theme with document element
   useEffect(() => {
@@ -72,20 +63,24 @@ export function App() {
     localStorage.setItem('thermalwatch_map_mode', newMode);
   }, []);
 
-  // Toggle Safety Resources Layer
-  const handleToggleSafetyResources = useCallback(() => {
-    setShowSafetyResources((prev) => !prev);
+  // Clear temporary safety resources and route when selecting a different hotspot or cluster
+  const handleSelectHotspot = useCallback((hotspot) => {
+    setSelectedHotspot(hotspot);
+    setTemporarySafetyResources([]);
+    setActiveRoute(null);
   }, []);
 
-  // Load FSI FFDR Grid and Safety Infrastructure on startup
+  const handleSelectCluster = useCallback((cluster) => {
+    setSelectedCluster(cluster);
+    setTemporarySafetyResources([]);
+    setActiveRoute(null);
+  }, []);
+
+  // Load FSI FFDR Grid on startup
   useEffect(() => {
     fetchFsiFfdrGrid()
       .then((grid) => setFfdrGrid(grid))
       .catch((err) => console.warn('Could not load FFDR grid:', err));
-
-    fetchSafetyResources()
-      .then((data) => setSafetyResources(data.resources || []))
-      .catch((err) => console.warn('Could not load safety resources:', err));
   }, []);
 
   // Fetch telemetry from backend
@@ -159,40 +154,6 @@ export function App() {
     loadData();
   }, [loadData]);
 
-  // Open Response Triage Panel
-  const handleOpenResponsePanel = useCallback(async (hotspot) => {
-    if (!hotspot) return;
-    setResponsePanelHotspot(hotspot);
-    setLoadingTriage(true);
-    try {
-      const triage = await fetchNearestSafetyResources({
-        lat: hotspot.latitude,
-        lon: hotspot.longitude,
-        classification: hotspot.classification,
-        frp: hotspot.frp,
-        riskScore: hotspot.risk_score || 50.0,
-      });
-      setNearestTriageData(triage);
-    } catch (err) {
-      console.error('Failed to load triage data:', err);
-    } finally {
-      setLoadingTriage(false);
-    }
-  }, []);
-
-  // Dispatch Route from selected safety resource to target hotspot
-  const handleGetResourceRoute = useCallback(async (startLat, startLon, destLat, destLon, resourceName) => {
-    try {
-      const data = await fetchEmergencyRoute(destLat, destLon, startLat, startLon);
-      if (resourceName && data.origin_depot) {
-        data.origin_depot.name = resourceName;
-      }
-      setActiveRoute(data);
-    } catch (err) {
-      console.error('Failed to calculate resource dispatch route:', err);
-    }
-  }, []);
-
   // Derive unique timeline dates
   const timelineDates = useMemo(() => {
     const dates = new Set();
@@ -241,8 +202,6 @@ export function App() {
         onSelectSensor={setSelectedSensor}
         mapMode={mapMode}
         onSelectMapMode={handleSelectMapMode}
-        showSafetyResources={showSafetyResources}
-        onToggleSafetyResources={handleToggleSafetyResources}
         theme={theme}
         onToggleTheme={handleToggleTheme}
         onRefresh={() => loadData(true)}
@@ -261,7 +220,8 @@ export function App() {
           selectedCluster={selectedCluster}
           activeRoute={activeRoute}
           onSetRoute={setActiveRoute}
-          onOpenResponsePanel={handleOpenResponsePanel}
+          onShowTemporaryResources={setTemporarySafetyResources}
+          showingTemporaryResources={temporarySafetyResources.length > 0}
           mode={mode}
           notice={notice}
           filterClass={filterClass}
@@ -278,15 +238,14 @@ export function App() {
             clusters={clusters}
             alerts={alerts}
             ffdrGrid={ffdrGrid}
-            safetyResources={safetyResources}
-            showSafetyResources={showSafetyResources}
+            temporarySafetyResources={temporarySafetyResources}
             mapMode={mapMode}
             theme={theme}
             regionConfig={REGIONS[selectedRegion]}
             selectedHotspot={selectedHotspot}
             activeRoute={activeRoute}
-            onSelectHotspot={(h) => setSelectedHotspot(h)}
-            onSelectCluster={(c) => setSelectedCluster(c)}
+            onSelectHotspot={handleSelectHotspot}
+            onSelectCluster={handleSelectCluster}
           />
 
           {/* Floating FSI Demo Data Banner */}
@@ -314,13 +273,6 @@ export function App() {
             </div>
           )}
 
-          {/* Floating Safety Infrastructure Legend (When enabled) */}
-          {showSafetyResources && (
-            <div className="absolute top-4 right-4 z-[1000]">
-              <SafetyLegend />
-            </div>
-          )}
-
           {/* Floating Timeline Scrubbing Controls */}
           {timelineDates.length > 1 && (
             <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000]">
@@ -333,16 +285,6 @@ export function App() {
           )}
         </main>
       </div>
-
-      {/* Emergency Incident Response Modal / Panel */}
-      <ResponsePanel
-        isOpen={Boolean(responsePanelHotspot)}
-        onClose={() => setResponsePanelHotspot(null)}
-        hotspot={responsePanelHotspot}
-        nearestData={nearestTriageData}
-        loading={loadingTriage}
-        onGetRoute={handleGetResourceRoute}
-      />
     </div>
   );
 }

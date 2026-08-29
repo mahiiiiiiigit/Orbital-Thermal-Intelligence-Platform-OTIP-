@@ -1,24 +1,63 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ConfidenceBadge, RiskBadge, DangerBadge } from './RiskBadge';
 import { TAXONOMY_COLORS } from '../constants/taxonomy';
 import {
-  Flame,
   ShieldAlert,
   CheckCircle2,
   Navigation,
   Activity,
-  Clock,
-  Truck,
-  X,
-  Trees,
   AlertOctagon,
-  LifeBuoy,
+  ChevronDown,
+  ChevronUp,
+  MapPin,
+  FileText,
+  Eye,
+  EyeOff,
+  PhoneCall,
 } from 'lucide-react';
-import { fetchEmergencyRoute } from '../services/api';
+import { fetchEmergencyRoute, fetchNearestSafetyResources, getDossierDownloadUrl } from '../services/api';
 
-export function HotspotCard({ hotspot, activeRoute, onSetRoute, onOpenResponsePanel }) {
+export function HotspotCard({
+  hotspot,
+  activeRoute,
+  onSetRoute,
+  onShowTemporaryResources,
+  showingTemporaryResources = false,
+}) {
   const [loadingRoute, setLoadingRoute] = useState(false);
   const [routeError, setRouteError] = useState(null);
+
+  // Contextual Emergency Response Dropdown State (CLOSED by default)
+  const [isOpenResources, setIsOpenResources] = useState(false);
+  const [showEvacSection, setShowEvacSection] = useState(false);
+  const [triageData, setTriageData] = useState(null);
+  const [loadingTriage, setLoadingTriage] = useState(false);
+
+  // Reset dropdown when hotspot changes
+  useEffect(() => {
+    setIsOpenResources(false);
+    setShowEvacSection(false);
+    setTriageData(null);
+  }, [hotspot?.id || hotspot?.latitude]);
+
+  const loadTriageData = useCallback(async () => {
+    if (!hotspot) return;
+    setLoadingTriage(true);
+    try {
+      const data = await fetchNearestSafetyResources({
+        lat: hotspot.latitude,
+        lon: hotspot.longitude,
+        classification: hotspot.classification,
+        frp: hotspot.frp,
+        riskScore: hotspot.risk_score || 50.0,
+      });
+      setTriageData(data);
+    } catch (err) {
+      console.error('Failed to load triage resources:', err);
+    } finally {
+      setLoadingTriage(false);
+    }
+  }, [hotspot]);
 
   if (!hotspot) {
     return (
@@ -36,22 +75,62 @@ export function HotspotCard({ hotspot, activeRoute, onSetRoute, onOpenResponsePa
     ? hotspot.reasons
     : [hotspot.explanation || 'Thermal signature evaluated by decision engine.'];
 
-  const handleCalculateRoute = async () => {
-    if (activeRoute) {
-      onSetRoute(null);
-      return;
-    }
+  // Logic: Show Emergency Response ONLY for potentially dangerous events
+  const isDangerousEvent =
+    hotspot.classification === 'INDUSTRIAL_FIRE' ||
+    hotspot.classification === 'WILDFIRE' ||
+    hotspot.large_forest_fire === true ||
+    (hotspot.classification === 'GAS_FLARE' && (hotspot.frp >= 40 || (hotspot.risk_score && hotspot.risk_score >= 50))) ||
+    hotspot.risk_level === 'critical' ||
+    hotspot.risk_level === 'high' ||
+    (hotspot.risk_score && hotspot.risk_score >= 55);
 
+  const nearest = triageData?.nearest_resources || {};
+  const sop = triageData?.recommended_response || {};
+
+  // Event-specific resource ordering
+  const getResourceList = () => {
+    if (hotspot.classification === 'WILDFIRE') {
+      return [
+        { key: 'fire_station', label: 'Forest Fire Response Base' },
+        { key: 'hospital', label: 'Nearest Hospital & Burn Care' },
+        { key: 'police', label: 'Police & SDRF Outpost' },
+        { key: 'shelter', label: 'Designated Safe Evacuation Shelter' },
+      ];
+    }
+    return [
+      { key: 'fire_station', label: 'Nearest Fire Station' },
+      { key: 'hospital', label: 'Nearest Hospital & ICU' },
+      { key: 'police', label: 'Nearest Police Station' },
+      { key: 'shelter', label: 'Official Evacuation Point' },
+    ];
+  };
+
+  const handleRouteToResource = async (res) => {
+    if (!res) return;
     setLoadingRoute(true);
     setRouteError(null);
     try {
-      const data = await fetchEmergencyRoute(hotspot.latitude, hotspot.longitude);
+      const data = await fetchEmergencyRoute(hotspot.latitude, hotspot.longitude, res.latitude, res.longitude);
+      if (data && data.origin_depot) {
+        data.origin_depot.name = res.name;
+      }
       onSetRoute(data);
     } catch (err) {
       console.error(err);
       setRouteError('Failed to calculate road route');
     } finally {
       setLoadingRoute(false);
+    }
+  };
+
+  const handleToggleMapResources = () => {
+    if (!onShowTemporaryResources) return;
+    if (showingTemporaryResources) {
+      onShowTemporaryResources([]);
+    } else {
+      const list = Object.values(nearest).filter(Boolean);
+      onShowTemporaryResources(list);
     }
   };
 
@@ -97,16 +176,6 @@ export function HotspotCard({ hotspot, activeRoute, onSetRoute, onOpenResponsePa
           <span>LARGE FOREST FIRE EXCURSION (High Intensity Spatial Cluster)</span>
         </div>
       )}
-
-      {/* RESPOND Button - Primary Incident Action */}
-      <button
-        type="button"
-        onClick={() => onOpenResponsePanel && onOpenResponsePanel(hotspot)}
-        className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 transition-all transform active:scale-95"
-      >
-        <LifeBuoy className="w-4 h-4 text-white animate-spin-slow" />
-        <span>RESPOND (Emergency Resources &amp; SOP)</span>
-      </button>
 
       {/* Telemetry Grid */}
       <div className="grid grid-cols-2 gap-2 text-xs">
@@ -157,65 +226,220 @@ export function HotspotCard({ hotspot, activeRoute, onSetRoute, onOpenResponsePa
         </div>
       </div>
 
-      {/* Emergency First Responder Route Dispatch Button & Info */}
-      <div className="bg-slate-100 dark:bg-dark-900/90 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1">
-            <Truck className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
-            <span>Emergency Dispatch Route</span>
-          </span>
-          <span className="text-[10px] text-slate-500 font-mono">OpenRouteService</span>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleCalculateRoute}
-          disabled={loadingRoute}
-          className={`w-full py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
-            activeRoute
-              ? 'bg-rose-600 hover:bg-rose-500 text-white'
-              : 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white shadow-md'
-          }`}
-        >
-          {loadingRoute ? (
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Calculating road route...
+      {/* CONTEXTUAL EMERGENCY RESPONSE (Shown ONLY for Dangerous / Attention-Requiring Events) */}
+      {isDangerousEvent && (
+        <div className="border-t border-slate-200 dark:border-slate-800 pt-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider flex items-center gap-1.5">
+              <ShieldAlert className="w-3.5 h-3.5 text-red-500" />
+              <span>Emergency Response</span>
             </span>
-          ) : activeRoute ? (
-            <>
-              <X className="w-3.5 h-3.5" />
-              <span>Clear Emergency Route</span>
-            </>
-          ) : (
-            <>
-              <Navigation className="w-3.5 h-3.5" />
-              <span>Calculate First-Responder Route</span>
-            </>
-          )}
-        </button>
-
-        {activeRoute && activeRoute.route && (
-          <div className="bg-white dark:bg-dark-950/80 border border-amber-300 dark:border-amber-500/30 rounded-lg p-2.5 space-y-1.5 text-xs">
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500 dark:text-slate-400">Nearest Base:</span>
-              <span className="font-semibold text-slate-800 dark:text-slate-200 text-right truncate max-w-[170px]">
-                {activeRoute.origin_depot?.name}
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500 dark:text-slate-400">Road Distance:</span>
-              <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">{activeRoute.route.distance_km} km</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500 dark:text-slate-400">Estimated Response Time:</span>
-              <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">{activeRoute.route.duration_minutes} mins</span>
-            </div>
+            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40">
+              DEMO SAFETY DATA
+            </span>
           </div>
-        )}
 
-        {routeError && <p className="text-[11px] text-red-500 dark:text-red-400">{routeError}</p>}
-      </div>
+          {/* Collapsible Trigger Button: CLOSED by default */}
+          <button
+            type="button"
+            onClick={() => {
+              const nextState = !isOpenResources;
+              setIsOpenResources(nextState);
+              if (nextState && !triageData && !loadingTriage) {
+                loadTriageData();
+              }
+            }}
+            className="w-full py-1.5 px-3 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-dark-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-xs font-semibold flex items-center justify-between text-slate-800 dark:text-slate-200 transition-colors"
+          >
+            <span>Nearby Safety Resources</span>
+            <span className="text-slate-400 font-mono text-[10px] flex items-center gap-1">
+              {isOpenResources ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </span>
+          </button>
+
+          {/* Expanded Resource Drawer */}
+          {isOpenResources && (
+            <div className="bg-slate-50 dark:bg-dark-900/90 border border-slate-200 dark:border-slate-800 rounded-xl p-3 space-y-3 text-xs animate-fadeIn">
+              {loadingTriage ? (
+                <div className="py-4 text-center text-slate-400">
+                  <div className="w-4 h-4 border-2 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto mb-1.5" />
+                  <span>Loading nearby emergency infrastructure...</span>
+                </div>
+              ) : (
+                <>
+                  {/* Event & Helpline Header */}
+                  <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-800 text-[11px]">
+                    <span className="text-slate-600 dark:text-slate-400">
+                      Emergency Helpline: <strong className="text-red-500 font-mono">112</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleToggleMapResources}
+                      className="px-2 py-0.5 rounded border border-slate-200 dark:border-slate-800 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center gap-1 text-[10px] transition-colors"
+                    >
+                      {showingTemporaryResources ? (
+                        <>
+                          <EyeOff className="w-3 h-3 text-amber-500" />
+                          <span>Hide on Map</span>
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="w-3 h-3 text-sky-500" />
+                          <span>Show on Map</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Resource Entries */}
+                  <div className="space-y-2">
+                    {getResourceList().map(({ key, label }) => {
+                      const res = nearest[key];
+                      return (
+                        <div
+                          key={key}
+                          className="bg-white dark:bg-dark-850 border border-slate-200 dark:border-slate-800/80 rounded-lg p-2 space-y-1"
+                        >
+                          <div className="flex justify-between items-start">
+                            <span className="font-semibold text-slate-700 dark:text-slate-300 text-[11px]">
+                              {label}
+                            </span>
+                            {res && (
+                              <span className="font-mono text-sky-600 dark:text-sky-400 font-bold text-[11px]">
+                                {res.distance_km} km
+                              </span>
+                            )}
+                          </div>
+
+                          {res ? (
+                            <>
+                              <div className="font-medium text-slate-900 dark:text-slate-100 text-xs truncate">
+                                {res.name}
+                              </div>
+                              <div className="flex justify-between items-center pt-1 border-t border-slate-100 dark:border-slate-800/60 text-[10px] text-slate-500">
+                                <span>ETA: <strong className="text-emerald-600 dark:text-emerald-400 font-mono">{res.estimated_travel_time_mins} min</strong></span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRouteToResource(res)}
+                                  disabled={loadingRoute}
+                                  className="px-2 py-0.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold flex items-center gap-1 transition-colors"
+                                >
+                                  <Navigation className="w-2.5 h-2.5" />
+                                  <span>Route</span>
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="text-[10px] text-slate-400 italic">
+                              No verified nearby resource found
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Evacuation / Safe-Location Section */}
+                  <div className="border-t border-slate-200 dark:border-slate-800 pt-2 space-y-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowEvacSection(!showEvacSection)}
+                      className="text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:text-sky-500 flex items-center justify-between w-full"
+                    >
+                      <span>Evacuation / Safe Locations</span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {showEvacSection ? '▲' : '▼'}
+                      </span>
+                    </button>
+
+                    {showEvacSection && (
+                      <div className="bg-white dark:bg-dark-850 rounded-lg p-2 border border-slate-200 dark:border-slate-800/80 text-[11px]">
+                        {nearest.shelter ? (
+                          <div className="space-y-1">
+                            <div className="font-semibold text-slate-900 dark:text-slate-100">
+                              {nearest.shelter.name}
+                            </div>
+                            <p className="text-slate-500 dark:text-slate-400 text-[10px]">
+                              {nearest.shelter.notes || 'Designated disaster relief center'} • Distance: {nearest.shelter.distance_km} km
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => handleRouteToResource(nearest.shelter)}
+                              className="w-full mt-1 py-1 rounded bg-slate-100 dark:bg-dark-900 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 font-semibold text-[10px] flex items-center justify-center gap-1"
+                            >
+                              <Navigation className="w-3 h-3 text-sky-500" />
+                              <span>Route to Evacuation Point</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-slate-400 italic text-[10.5px]">
+                            No verified evacuation point available for this location.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* SOP Quick Note */}
+                  {sop.title && (
+                    <div className="bg-sky-50 dark:bg-dark-850 rounded-lg p-2 border border-sky-200 dark:border-sky-950 text-[10.5px] text-slate-700 dark:text-slate-300 space-y-1">
+                      <strong className="text-sky-700 dark:text-sky-400 block font-semibold">
+                        SOP: {sop.title}
+                      </strong>
+                      <p className="leading-snug text-slate-600 dark:text-slate-400">
+                        {sop.actions && sop.actions[0]}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Incident Action Summary & Dossier */}
+                  <div className="pt-1 flex justify-between items-center border-t border-slate-200 dark:border-slate-800 text-[10px]">
+                    <span className="text-slate-400">Authority: NDMA / FSI</span>
+                    <a
+                      href={getDossierDownloadUrl(hotspot.id || 'jamnagar-refinery', 'demo')}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-2 py-1 rounded bg-slate-200 hover:bg-slate-300 dark:bg-dark-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold flex items-center gap-1 transition-colors"
+                    >
+                      <FileText className="w-3 h-3 text-slate-600 dark:text-slate-400" />
+                      <span>Generate Dossier</span>
+                    </a>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Active Route Box if Route Loaded */}
+      {activeRoute && activeRoute.route && (
+        <div className="bg-white dark:bg-dark-950/80 border border-amber-300 dark:border-amber-500/30 rounded-lg p-2.5 space-y-1.5 text-xs">
+          <div className="flex justify-between items-center">
+            <span className="text-slate-500 dark:text-slate-400">Dispatch Base:</span>
+            <span className="font-semibold text-slate-800 dark:text-slate-200 text-right truncate max-w-[170px]">
+              {activeRoute.origin_depot?.name}
+            </span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-slate-500 dark:text-slate-400">Road Distance:</span>
+            <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">{activeRoute.route.distance_km} km</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-slate-500 dark:text-slate-400">Estimated Response Time:</span>
+            <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">{activeRoute.route.duration_minutes} mins</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => onSetRoute(null)}
+            className="w-full py-1 text-[10px] text-red-500 hover:text-red-400 font-semibold text-center border-t border-slate-200 dark:border-slate-800/80 pt-1"
+          >
+            Clear Route
+          </button>
+        </div>
+      )}
+
+      {routeError && <p className="text-[11px] text-red-500 dark:text-red-400">{routeError}</p>}
 
       {/* Why Classified? Decision Reasoning */}
       <div className="bg-sky-50 dark:bg-slate-900/90 border border-sky-200 dark:border-sky-950/80 rounded-lg p-3 space-y-1.5">
