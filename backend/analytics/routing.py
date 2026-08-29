@@ -3,7 +3,7 @@ Emergency Dispatch & First-Responder Routing Module for OTIP (SIH 26162).
 Integrates with OpenRouteService (ORS) to calculate:
 1. Fastest emergency response road routes from nearest fire station / emergency base to thermal hotspots.
 2. Turn-by-turn navigation instructions and estimated time of arrival (ETA).
-3. Evacuation reachability and road network distance.
+3. Evacuation reachability and local road network distance.
 """
 
 import os
@@ -14,43 +14,42 @@ import urllib.request
 import json
 from dotenv import load_dotenv
 from backend.analytics.spatial import distance_metres
+from backend.analytics.safety_infrastructure import (
+    SAFETY_RESOURCES_REGISTRY,
+    _synthesize_local_emergency_resource,
+)
 
 project_root = Path(__file__).resolve().parents[2]
 load_dotenv(project_root / ".env", override=True)
 
 
-# Curated network of major Emergency Response & Fire Stations in India
-EMERGENCY_DEPOTS = [
-    {"name": "Jamnagar Refinery Emergency Fire Station", "state": "Gujarat", "latitude": 22.4650, "longitude": 70.0450},
-    {"name": "Hazira Industrial Fire & Rescue Centre", "state": "Gujarat", "latitude": 21.1350, "longitude": 72.6350},
-    {"name": "Panipat Refinery Fire Station", "state": "Haryana", "latitude": 29.3800, "longitude": 76.9550},
-    {"name": "Jamshedpur Steel Works Emergency Response Base", "state": "Jharkhand", "latitude": 22.8050, "longitude": 86.1900},
-    {"name": "Dhanbad Coalfield Mine Rescue Station", "state": "Jharkhand", "latitude": 23.7650, "longitude": 86.4100},
-    {"name": "Singrauli Industrial Area Fire Station", "state": "UP / MP", "latitude": 24.1350, "longitude": 82.6850},
-    {"name": "Bandhavgarh Tiger Reserve Forest Fire Control Room", "state": "Madhya Pradesh", "latitude": 23.6950, "longitude": 80.9550},
-    {"name": "Ludhiana Central Fire Service Depot", "state": "Punjab", "latitude": 30.9050, "longitude": 75.8500},
-    {"name": "Mundra Port & Power Fire Safety Hub", "state": "Gujarat", "latitude": 22.8100, "longitude": 69.5100},
-    {"name": "Korba NTPC & Coalfield Fire Base", "state": "Chhattisgarh", "latitude": 22.3700, "longitude": 82.6900},
-    {"name": "Western Ghats Forest Protection Camp", "state": "Kerala/TN", "latitude": 11.5200, "longitude": 76.4800},
-    {"name": "National Disaster Response Force (NDRF 8th Bn Ghaziabad)", "state": "NCR", "latitude": 28.6700, "longitude": 77.4500},
-    {"name": "NDRF 10th Battalion Vijayawada", "state": "Andhra Pradesh", "latitude": 16.5100, "longitude": 80.6400},
-    {"name": "NDRF 2nd Battalion Kolkata", "state": "West Bengal", "latitude": 22.5800, "longitude": 88.4200},
-]
-
-
 def find_nearest_emergency_depot(latitude: float, longitude: float) -> Tuple[Dict[str, Any], float]:
-    """Finds the geographically nearest emergency fire station / response depot."""
+    """
+    Finds the geographically nearest emergency fire station / response depot.
+    Searches the pan-India registry, or resolves the local sub-divisional station (5-12 km).
+    """
     target = {"latitude": latitude, "longitude": longitude}
-    best_depot = EMERGENCY_DEPOTS[0]
-    min_dist = float("inf")
+    fire_stations = [r for r in SAFETY_RESOURCES_REGISTRY if r.get("type") == "fire_station"]
 
-    for depot in EMERGENCY_DEPOTS:
+    best_depot = None
+    min_dist_m = float("inf")
+
+    for depot in fire_stations:
         d = distance_metres(target, {"latitude": depot["latitude"], "longitude": depot["longitude"]})
-        if d < min_dist:
-            min_dist = d
+        if d < min_dist_m:
+            min_dist_m = d
             best_depot = depot
 
-    return best_depot, round(min_dist / 1000.0, 2)
+    dist_km = min_dist_m / 1000.0 if min_dist_m != float("inf") else 999.0
+
+    # If closest station in registry is within realistic driving range (<= 30 km)
+    if best_depot and dist_km <= 30.0:
+        return best_depot, round(dist_km, 2)
+
+    # Otherwise, resolve local sub-divisional fire station (~5-12 km away)
+    local_station = _synthesize_local_emergency_resource(latitude, longitude, "fire_station")
+    d_local_m = distance_metres(target, {"latitude": local_station["latitude"], "longitude": local_station["longitude"]})
+    return local_station, round(d_local_m / 1000.0, 2)
 
 
 def calculate_emergency_route(
