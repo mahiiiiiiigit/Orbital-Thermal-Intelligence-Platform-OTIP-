@@ -1,0 +1,201 @@
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Navbar } from './components/Navbar';
+import { Sidebar } from './components/Sidebar';
+import { MapView } from './components/MapView';
+import { TimelineSlider } from './components/TimelineSlider';
+import { ThermalLegend } from './components/ThermalLegend';
+import { fetchHotspots, fetchClusters, fetchAlerts } from './services/api';
+import { REGIONS } from './constants/taxonomy';
+import { AlertTriangle } from 'lucide-react';
+
+export function App() {
+  const [mode, setMode] = useState('demo'); // 'demo' | 'auto'
+  const [selectedRegion, setSelectedRegion] = useState('india');
+  const [selectedSensor, setSelectedSensor] = useState('VIIRS_SNPP_NRT');
+  const [mapMode, setMapMode] = useState(() => {
+    return localStorage.getItem('thermalwatch_map_mode') || 'hybrid';
+  });
+
+  const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [allHotspots, setAllHotspots] = useState([]);
+  const [clusters, setClusters] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+
+  const [timelineIndex, setTimelineIndex] = useState(0);
+  const [filterClass, setFilterClass] = useState('all');
+  const [selectedHotspot, setSelectedHotspot] = useState(null);
+  const [selectedCluster, setSelectedCluster] = useState(null);
+
+  // Save map mode to localStorage
+  const handleSelectMapMode = useCallback((newMode) => {
+    setMapMode(newMode);
+    localStorage.setItem('thermalwatch_map_mode', newMode);
+  }, []);
+
+  // Fetch telemetry from backend
+  const loadData = useCallback(async (forceRefresh = false) => {
+    setLoading(true);
+    const region = REGIONS[selectedRegion] || REGIONS.india;
+
+    try {
+      const [hotspotRes, clusterRes, alertRes] = await Promise.all([
+        fetchHotspots({
+          mode,
+          source: selectedSensor,
+          days: 3,
+          bbox: region.bbox,
+          forceRefresh,
+        }),
+        fetchClusters({ mode, source: selectedSensor }),
+        fetchAlerts({ mode, source: selectedSensor }),
+      ]);
+
+      const raw = hotspotRes.hotspots || [];
+      const sorted = raw.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+      setAllHotspots(sorted);
+      setClusters(clusterRes.clusters || []);
+      setAlerts(alertRes.alerts || []);
+      setNotice(hotspotRes.notice || `Loaded ${sorted.length} hotspots (${region.name}).`);
+
+      if (sorted.length > 0) {
+        setTimelineIndex(sorted.length - 1);
+        setSelectedHotspot(sorted[sorted.length - 1]);
+      } else {
+        setSelectedHotspot(null);
+      }
+
+      if (clusterRes.clusters && clusterRes.clusters.length > 0) {
+        setSelectedCluster(clusterRes.clusters[0]);
+      } else {
+        setSelectedCluster(null);
+      }
+    } catch (err) {
+      console.error('Failed to load telemetry:', err);
+      setNotice(`Error connecting to satellite feed: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [mode, selectedRegion, selectedSensor]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Derive unique timeline dates
+  const timelineDates = useMemo(() => {
+    const dates = new Set();
+    allHotspots.forEach((h) => {
+      if (h.timestamp) dates.add(h.timestamp.slice(0, 10));
+    });
+    return Array.from(dates).sort();
+  }, [allHotspots]);
+
+  const activeDate = timelineDates[timelineIndex] || (timelineDates.length > 0 ? timelineDates[timelineDates.length - 1] : null);
+
+  // Filter visible hotspots based on timeline and classification filter
+  const visibleHotspots = useMemo(() => {
+    if (!activeDate) return [];
+    return allHotspots.filter((h) => {
+      const dateMatch = h.timestamp?.slice(0, 10) <= activeDate;
+      if (!dateMatch) return false;
+      if (filterClass === 'all') return true;
+      return h.classification === filterClass;
+    });
+  }, [allHotspots, activeDate, filterClass]);
+
+  // Telemetry KPIs
+  const stats = useMemo(() => {
+    const totalHotspots = allHotspots.length;
+    const totalClusters = clusters.length;
+    const totalAlerts = alerts.length;
+    const avgFrp = totalHotspots > 0
+      ? allHotspots.reduce((sum, h) => sum + (Number(h.frp) || 0), 0) / totalHotspots
+      : 0;
+
+    return { totalHotspots, totalClusters, totalAlerts, avgFrp };
+  }, [allHotspots, clusters, alerts]);
+
+  return (
+    <div className="flex flex-col h-screen w-screen bg-dark-900 overflow-hidden text-slate-100">
+      {/* Top Navigation Bar */}
+      <Navbar
+        mode={mode}
+        onToggleMode={(newMode) => setMode(newMode)}
+        selectedRegion={selectedRegion}
+        onSelectRegion={setSelectedRegion}
+        selectedSensor={selectedSensor}
+        onSelectSensor={setSelectedSensor}
+        mapMode={mapMode}
+        onSelectMapMode={handleSelectMapMode}
+        onRefresh={() => loadData(true)}
+        loading={loading}
+        stats={stats}
+      />
+
+      {/* Main Workspace Layout */}
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* Left Analytics Command Center */}
+        <Sidebar
+          hotspots={allHotspots}
+          clusters={clusters}
+          alerts={alerts}
+          selectedHotspot={selectedHotspot}
+          selectedCluster={selectedCluster}
+          mode={mode}
+          notice={notice}
+          filterClass={filterClass}
+          onSelectFilterClass={setFilterClass}
+          activeDate={activeDate}
+          stats={stats}
+        />
+
+        {/* Center / Main GIS Map Area */}
+        <main className="flex-1 relative h-full w-full bg-dark-950 overflow-hidden">
+          {/* Leaflet Map */}
+          <MapView
+            hotspots={visibleHotspots}
+            clusters={clusters}
+            alerts={alerts}
+            mapMode={mapMode}
+            regionConfig={REGIONS[selectedRegion]}
+            selectedHotspot={selectedHotspot}
+            onSelectHotspot={(h) => setSelectedHotspot(h)}
+            onSelectCluster={(c) => setSelectedCluster(c)}
+          />
+
+          {/* Floating Emergency Alert Banner */}
+          {alerts.length > 0 && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-red-600/90 text-white font-bold text-xs py-2 px-4 rounded-xl shadow-2xl border border-red-400/50 backdrop-blur-md flex items-center gap-2 animate-bounce">
+              <AlertTriangle className="w-4 h-4 text-white" />
+              <span>
+                CRITICAL ALERT: {alerts[0].facility_name} — {alerts[0].current_frp} MW Radiance (Z-Score: +{alerts[0].z_score}σ)
+              </span>
+            </div>
+          )}
+
+          {/* Floating Thermal Intensity Legend (Thermal & Hybrid modes) */}
+          {mapMode !== 'standard' && (
+            <div className="absolute bottom-6 right-6 z-[1000]">
+              <ThermalLegend />
+            </div>
+          )}
+
+          {/* Floating Timeline Scrubbing Controls */}
+          {timelineDates.length > 1 && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000]">
+              <TimelineSlider
+                dates={timelineDates}
+                currentIndex={timelineIndex}
+                onChangeIndex={(idx) => setTimelineIndex(idx)}
+              />
+            </div>
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+export default App;
