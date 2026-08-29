@@ -14,6 +14,8 @@ import {
   Eye,
   EyeOff,
   PhoneCall,
+  Truck,
+  X,
 } from 'lucide-react';
 import { fetchEmergencyRoute, fetchNearestSafetyResources, getDossierDownloadUrl } from '../services/api';
 
@@ -75,7 +77,7 @@ export function HotspotCard({
     ? hotspot.reasons
     : [hotspot.explanation || 'Thermal signature evaluated by decision engine.'];
 
-  // Logic: Show Emergency Response ONLY for potentially dangerous events
+  // Logic: Show Emergency Response section for potentially dangerous events
   const isDangerousEvent =
     hotspot.classification === 'INDUSTRIAL_FIRE' ||
     hotspot.classification === 'WILDFIRE' ||
@@ -104,6 +106,25 @@ export function HotspotCard({
       { key: 'police', label: 'Nearest Police Station' },
       { key: 'shelter', label: 'Official Evacuation Point' },
     ];
+  };
+
+  const handleCalculateRoute = async () => {
+    if (activeRoute) {
+      onSetRoute(null);
+      return;
+    }
+
+    setLoadingRoute(true);
+    setRouteError(null);
+    try {
+      const data = await fetchEmergencyRoute(hotspot.latitude, hotspot.longitude);
+      onSetRoute(data);
+    } catch (err) {
+      console.error(err);
+      setRouteError('Failed to calculate road route');
+    } finally {
+      setLoadingRoute(false);
+    }
   };
 
   const handleRouteToResource = async (res) => {
@@ -136,7 +157,7 @@ export function HotspotCard({
 
   return (
     <div className="bg-white dark:bg-dark-850/90 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-3.5 shadow-md dark:shadow-xl backdrop-blur-md transition-colors duration-200">
-      {/* Header */}
+      {/* 1. Header Card */}
       <div className="flex items-start justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-2.5">
         <div>
           <div className="flex items-center gap-1.5">
@@ -169,7 +190,7 @@ export function HotspotCard({
         </div>
       </div>
 
-      {/* Large Forest Fire Alert Banner */}
+      {/* 2. Large Forest Fire Alert Banner */}
       {hotspot.large_forest_fire && (
         <div className="bg-rose-500/15 border border-rose-500/40 rounded-lg p-2 flex items-center gap-2 text-xs text-rose-600 dark:text-rose-400 font-bold">
           <AlertOctagon className="w-4 h-4 text-rose-500 animate-pulse flex-shrink-0" />
@@ -177,7 +198,7 @@ export function HotspotCard({
         </div>
       )}
 
-      {/* Telemetry Grid */}
+      {/* 3. Telemetry Grid Card */}
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div className="bg-slate-50 dark:bg-dark-900/80 border border-slate-200 dark:border-slate-800/60 rounded-lg p-2">
           <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Radiance (FRP)</span>
@@ -203,7 +224,7 @@ export function HotspotCard({
         </div>
       </div>
 
-      {/* Forest Context / Land Attribution */}
+      {/* 4. Forest Context / Land Attribution Card */}
       <div className="bg-slate-50 dark:bg-dark-900/80 border border-slate-200 dark:border-slate-800/60 rounded-lg p-2.5 text-xs space-y-1">
         <div className="flex justify-between">
           <span className="text-slate-500 dark:text-slate-400">Context / Eco-Zone:</span>
@@ -226,13 +247,73 @@ export function HotspotCard({
         </div>
       </div>
 
-      {/* CONTEXTUAL EMERGENCY RESPONSE (Shown ONLY for Dangerous / Attention-Requiring Events) */}
+      {/* 5. Emergency First-Responder Route Card (Always available on every hotspot like before) */}
+      <div className="bg-slate-100 dark:bg-dark-900/90 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1">
+            <Truck className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
+            <span>Emergency Dispatch Route</span>
+          </span>
+          <span className="text-[10px] text-slate-500 font-mono">OpenRouteService</span>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleCalculateRoute}
+          disabled={loadingRoute}
+          className={`w-full py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+            activeRoute
+              ? 'bg-rose-600 hover:bg-rose-500 text-white'
+              : 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white shadow-md'
+          }`}
+        >
+          {loadingRoute ? (
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Calculating road route...
+            </span>
+          ) : activeRoute ? (
+            <>
+              <X className="w-3.5 h-3.5" />
+              <span>Clear Emergency Route</span>
+            </>
+          ) : (
+            <>
+              <Navigation className="w-3.5 h-3.5" />
+              <span>Calculate First-Responder Route</span>
+            </>
+          )}
+        </button>
+
+        {activeRoute && activeRoute.route && (
+          <div className="bg-white dark:bg-dark-950/80 border border-amber-300 dark:border-amber-500/30 rounded-lg p-2.5 space-y-1.5 text-xs">
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500 dark:text-slate-400">Nearest Base:</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-200 text-right truncate max-w-[170px]">
+                {activeRoute.origin_depot?.name}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500 dark:text-slate-400">Road Distance:</span>
+              <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">{activeRoute.route.distance_km} km</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500 dark:text-slate-400">Estimated Response Time:</span>
+              <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">{activeRoute.route.duration_minutes} mins</span>
+            </div>
+          </div>
+        )}
+
+        {routeError && <p className="text-[11px] text-red-500 dark:text-red-400">{routeError}</p>}
+      </div>
+
+      {/* 6. Contextual Emergency Response & Nearby Resources (Shown for dangerous events) */}
       {isDangerousEvent && (
         <div className="border-t border-slate-200 dark:border-slate-800 pt-3 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider flex items-center gap-1.5">
               <ShieldAlert className="w-3.5 h-3.5 text-red-500" />
-              <span>Emergency Response</span>
+              <span>Nearby Emergency Resources</span>
             </span>
             <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40">
               DEMO SAFETY DATA
@@ -251,13 +332,13 @@ export function HotspotCard({
             }}
             className="w-full py-1.5 px-3 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-dark-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-xs font-semibold flex items-center justify-between text-slate-800 dark:text-slate-200 transition-colors"
           >
-            <span>Nearby Safety Resources</span>
+            <span>Inspect Nearby Facilities</span>
             <span className="text-slate-400 font-mono text-[10px] flex items-center gap-1">
               {isOpenResources ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </span>
           </button>
 
-          {/* Expanded Resource Drawer */}
+          {/* Expanded Resource Cards */}
           {isOpenResources && (
             <div className="bg-slate-50 dark:bg-dark-900/90 border border-slate-200 dark:border-slate-800 rounded-xl p-3 space-y-3 text-xs animate-fadeIn">
               {loadingTriage ? (
@@ -291,14 +372,14 @@ export function HotspotCard({
                     </button>
                   </div>
 
-                  {/* Resource Entries */}
+                  {/* Individual Resource Cards */}
                   <div className="space-y-2">
                     {getResourceList().map(({ key, label }) => {
                       const res = nearest[key];
                       return (
                         <div
                           key={key}
-                          className="bg-white dark:bg-dark-850 border border-slate-200 dark:border-slate-800/80 rounded-lg p-2 space-y-1"
+                          className="bg-white dark:bg-dark-850 border border-slate-200 dark:border-slate-800/80 rounded-lg p-2.5 space-y-1 shadow-sm"
                         >
                           <div className="flex justify-between items-start">
                             <span className="font-semibold text-slate-700 dark:text-slate-300 text-[11px]">
@@ -313,7 +394,7 @@ export function HotspotCard({
 
                           {res ? (
                             <>
-                              <div className="font-medium text-slate-900 dark:text-slate-100 text-xs truncate">
+                              <div className="font-semibold text-slate-900 dark:text-slate-100 text-xs truncate">
                                 {res.name}
                               </div>
                               <div className="flex justify-between items-center pt-1 border-t border-slate-100 dark:border-slate-800/60 text-[10px] text-slate-500">
@@ -339,7 +420,7 @@ export function HotspotCard({
                     })}
                   </div>
 
-                  {/* Evacuation / Safe-Location Section */}
+                  {/* Evacuation / Safe-Location Card */}
                   <div className="border-t border-slate-200 dark:border-slate-800 pt-2 space-y-1.5">
                     <button
                       type="button"
@@ -353,7 +434,7 @@ export function HotspotCard({
                     </button>
 
                     {showEvacSection && (
-                      <div className="bg-white dark:bg-dark-850 rounded-lg p-2 border border-slate-200 dark:border-slate-800/80 text-[11px]">
+                      <div className="bg-white dark:bg-dark-850 rounded-lg p-2.5 border border-slate-200 dark:border-slate-800/80 text-[11px]">
                         {nearest.shelter ? (
                           <div className="space-y-1">
                             <div className="font-semibold text-slate-900 dark:text-slate-100">
@@ -380,9 +461,9 @@ export function HotspotCard({
                     )}
                   </div>
 
-                  {/* SOP Quick Note */}
+                  {/* SOP Protocol Card */}
                   {sop.title && (
-                    <div className="bg-sky-50 dark:bg-dark-850 rounded-lg p-2 border border-sky-200 dark:border-sky-950 text-[10.5px] text-slate-700 dark:text-slate-300 space-y-1">
+                    <div className="bg-sky-50 dark:bg-dark-850 rounded-lg p-2.5 border border-sky-200 dark:border-sky-950 text-[10.5px] text-slate-700 dark:text-slate-300 space-y-1">
                       <strong className="text-sky-700 dark:text-sky-400 block font-semibold">
                         SOP: {sop.title}
                       </strong>
@@ -392,7 +473,7 @@ export function HotspotCard({
                     </div>
                   )}
 
-                  {/* Incident Action Summary & Dossier */}
+                  {/* Dossier Download Action */}
                   <div className="pt-1 flex justify-between items-center border-t border-slate-200 dark:border-slate-800 text-[10px]">
                     <span className="text-slate-400">Authority: NDMA / FSI</span>
                     <a
@@ -412,36 +493,7 @@ export function HotspotCard({
         </div>
       )}
 
-      {/* Active Route Box if Route Loaded */}
-      {activeRoute && activeRoute.route && (
-        <div className="bg-white dark:bg-dark-950/80 border border-amber-300 dark:border-amber-500/30 rounded-lg p-2.5 space-y-1.5 text-xs">
-          <div className="flex justify-between items-center">
-            <span className="text-slate-500 dark:text-slate-400">Dispatch Base:</span>
-            <span className="font-semibold text-slate-800 dark:text-slate-200 text-right truncate max-w-[170px]">
-              {activeRoute.origin_depot?.name}
-            </span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-slate-500 dark:text-slate-400">Road Distance:</span>
-            <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">{activeRoute.route.distance_km} km</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-slate-500 dark:text-slate-400">Estimated Response Time:</span>
-            <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">{activeRoute.route.duration_minutes} mins</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => onSetRoute(null)}
-            className="w-full py-1 text-[10px] text-red-500 hover:text-red-400 font-semibold text-center border-t border-slate-200 dark:border-slate-800/80 pt-1"
-          >
-            Clear Route
-          </button>
-        </div>
-      )}
-
-      {routeError && <p className="text-[11px] text-red-500 dark:text-red-400">{routeError}</p>}
-
-      {/* Why Classified? Decision Reasoning */}
+      {/* 7. Why Classified? Decision Reasoning Card */}
       <div className="bg-sky-50 dark:bg-slate-900/90 border border-sky-200 dark:border-sky-950/80 rounded-lg p-3 space-y-1.5">
         <div className="flex items-center gap-1 text-[11px] font-bold text-sky-700 dark:text-sky-400 uppercase tracking-wider">
           <CheckCircle2 className="w-3.5 h-3.5" />
