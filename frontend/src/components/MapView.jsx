@@ -33,8 +33,8 @@ export function MapView({
       zoomControl: false,
     });
 
-    // CARTO Raster Basemap Layer with Key parameter
-    const cartoKey = import.meta.env.VITE_CARTO_KEY || 'MY_CARTO_KEY';
+    // CARTO Raster Basemap Layer with Authenticated Key
+    const cartoKey = import.meta.env.VITE_CARTO_KEY || 'cb1_2jno_1_ef0c23ffe5f8a02710afad82';
     L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=${cartoKey}`, {
       attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; NASA FIRMS &copy; OpenRouteService',
       maxZoom: 19,
