@@ -1,3 +1,18 @@
+"""
+Advanced Multi-Class Thermal Intelligence Classifier for SIH 26162.
+Provides comprehensive categorization with high coverage, multi-factor confidence scoring,
+and human-readable explainable reasoning.
+
+Supported Taxonomic Classes:
+1. GAS_FLARE - Operational flare stacks at refineries, petrochemical complexes, and LNG terminals.
+2. INDUSTRIAL_FIRE - Sudden critical thermal excursions, blowout spikes, and structural plant fires.
+3. AGRICULTURAL_BURNING - Seasonal, short-lived crop stubble residue fires across Indian agrarian basins.
+4. WILDFIRE - Biomass combustion and active advancing canopy fires across forest reserves & wildlands.
+5. MINING_ACTIVITY - Persistent thermal signatures in surface coalfields, open-cast pits & seam combustion zones.
+6. PERSISTENT_INDUSTRIAL - Continuous operational heat from steel mills, power plants, kilns & smelters.
+7. UNCLASSIFIED - Rare isolated anomalies with genuinely insufficient spatial, temporal, or contextual signal.
+"""
+
 from statistics import mean, pstdev
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -16,7 +31,7 @@ VALID_CLASSIFICATIONS = [
 def _get_source_identifier(hotspot: Dict[str, Any]) -> str:
     """
     Returns a unique key for grouping recurring heat events.
-    Uses facility name if spatially matched, otherwise groups geographically by ~2km grid cell.
+    Uses facility name if spatially matched, otherwise groups geographically by ~0.02 deg grid (~2.2 km).
     """
     if hotspot.get("facility_name"):
         return f"facility:{hotspot['facility_name']}"
@@ -41,9 +56,8 @@ def calculate_risk_score(
     frp = float(hotspot.get("frp") or 0.0)
     conf = str(hotspot.get("confidence") or "nominal").lower()
 
-    # Base severity by classification taxonomy
     base_scores = {
-        "INDUSTRIAL_FIRE": 70.0,
+        "INDUSTRIAL_FIRE": 75.0,
         "WILDFIRE": 55.0,
         "PERSISTENT_INDUSTRIAL": 40.0,
         "MINING_ACTIVITY": 35.0,
@@ -53,13 +67,8 @@ def calculate_risk_score(
     }
     base = base_scores.get(classification, 25.0)
 
-    # FRP intensity component (up to +25 points)
     frp_component = min(25.0, frp * 0.3)
-
-    # Persistence component (up to +15 points)
     persistence_component = min(15.0, active_days * 2.5)
-
-    # Confidence weight (up to +10 points)
     confidence_weight = 10.0 if conf in ("high", "h") else (6.0 if conf in ("nominal", "n") else 2.0)
 
     total = base + frp_component + persistence_component + confidence_weight
@@ -74,25 +83,26 @@ def _classify_single_hotspot(
     z_score: Optional[float],
 ) -> Tuple[str, str, str, List[str]]:
     """
-    Rule-based explainable decision engine.
+    Hierarchical explainable rule engine with smart fallbacks to maximize classification coverage.
     Returns: (classification, confidence_level, explanation, reasons_list)
     """
     frp = float(hotspot.get("frp") or 0.0)
     brightness = hotspot.get("brightness_temp")
     facility_name = hotspot.get("facility_name")
     facility_type = hotspot.get("facility_type")
-    facility_category = hotspot.get("facility_category") or ""
+    facility_category = hotspot.get("facility_category") or hotspot.get("land_context") or ""
     has_flares = hotspot.get("has_flares", False)
     context = hotspot.get("context", "unassigned")
     distance_m = hotspot.get("distance_to_facility_m")
     sat_conf = str(hotspot.get("confidence") or "nominal").lower()
     day_night = str(hotspot.get("day_night") or "D").upper()
 
-    dist_str = f"{int(distance_m)}m" if distance_m is not None else "N/A"
+    dist_km = round(distance_m / 1000.0, 1) if distance_m is not None else None
+    dist_str = f"{dist_km} km" if dist_km is not None else "within facility perimeter"
 
-    # -------------------------------------------------------------
-    # RULE 1: INDUSTRIAL FIRE (Sudden high-intensity anomaly at plant)
-    # -------------------------------------------------------------
+    # =========================================================================
+    # RULE 1: INDUSTRIAL FIRE (Critical Thermal Excursion / Sudden Spike)
+    # =========================================================================
     is_near_industrial = (
         facility_type in ("refinery_gas", "heavy_industry")
         or context == "industrial"
@@ -100,58 +110,63 @@ def _classify_single_hotspot(
     )
 
     is_statistical_spike = (z_score is not None and z_score >= 3.0)
-    is_extreme_frp_spike = (frp >= 85.0 and (mean_frp <= 45.0 or frp >= 2.0 * mean_frp))
+    is_extreme_frp_spike = (frp >= 85.0 and (mean_frp <= 45.0 or frp >= 1.8 * mean_frp))
     is_uncontrolled_burst = (is_near_industrial and frp >= 90.0)
 
     if is_near_industrial and (is_statistical_spike or is_extreme_frp_spike or is_uncontrolled_burst):
-        conf_level = "HIGH" if (frp >= 100.0 or (z_score and z_score >= 3.5)) else "MEDIUM"
+        conf_level = "HIGH" if (frp >= 95.0 or (z_score and z_score >= 3.5)) else "MEDIUM"
         z_text = f" ({round(z_score, 1)}σ above baseline)" if z_score is not None else ""
+        explanation = (
+            f"Classified as INDUSTRIAL_FIRE because hotspot experienced a sudden {frp} MW thermal excursion"
+            f"{z_text} at {facility_name or 'industrial asset'}, exceeding historical baseline."
+        )
         reasons = [
             f"Located within {dist_str} of industrial asset {facility_name or 'complex'}",
             f"Sudden extreme thermal excursion of {frp} MW{z_text}",
             f"Exceeds historical facility mean of {round(mean_frp, 1)} MW",
-            "Emergency on-site inspection recommended to confirm flare vs structural blaze",
+            "Emergency on-site safety and containment inspection recommended",
         ]
-        explanation = f"Critical thermal spike detected at {facility_name or 'industrial site'} exceeding baseline operations."
         return "INDUSTRIAL_FIRE", conf_level, explanation, reasons
 
-    # Severe unregistered industrial fire in non-forest zone
+    # Extreme single thermal spike in unassigned zone
     if frp >= 95.0 and active_days <= 2 and context != "forest":
+        explanation = f"Classified as INDUSTRIAL_FIRE because extreme radiative power ({frp} MW) indicates an uncharacteristic structural or chemical fire."
         reasons = [
             f"Extreme radiative thermal output of {frp} MW",
             f"Sudden onset without historical persistence ({active_days} active day)",
-            "High thermal intensity characteristic of structural/chemical fire",
-            "Unregistered coordinates requiring immediate compliance verification",
+            "Thermal radiance characteristic of structural/chemical blaze",
+            "Flagged for urgent environmental compliance triage",
         ]
-        return "INDUSTRIAL_FIRE", "HIGH", "High-intensity sudden thermal fire detected.", reasons
+        return "INDUSTRIAL_FIRE", "HIGH", explanation, reasons
 
-    # -------------------------------------------------------------
-    # RULE 2: GAS FLARE (Elevated flare stack at refinery/gas plant)
-    # -------------------------------------------------------------
+    # =========================================================================
+    # RULE 2: GAS FLARE (Refinery, Petrochemical, LNG Flare Stacks)
+    # =========================================================================
     is_flare_facility = (
         has_flares
         or facility_type == "refinery_gas"
         or "Refinery" in facility_category
         or "Petrochemical" in facility_category
         or "Gas Processing" in facility_category
+        or "LNG" in facility_category
     )
 
-    if is_flare_facility and distance_m is not None and distance_m <= 7000:
-        conf_level = "HIGH" if (active_days >= 3 or (distance_m <= 3500 and sat_conf in ("high", "h"))) else "MEDIUM"
-        night_text = "24/7 continuous operation with nighttime detection" if day_night == "N" else "Continuous daytime operational emission"
+    if is_flare_facility and distance_m is not None and distance_m <= 8500:
+        conf_level = "HIGH" if (distance_m <= 4000 or active_days >= 2 or sat_conf in ("high", "h")) else "MEDIUM"
+        night_text = "Continuous 24/7 flaring profile with nighttime detection" if day_night == "N" else "Operational daytime process flare emission"
+        explanation = f"Classified as GAS_FLARE because hotspot is within {dist_str} of {facility_name} and exhibits stable flaring coordinates."
         reasons = [
             f"Located within {dist_str} of {facility_name} ({facility_category})",
-            f"Stable geographic coordinates consistent with elevated flare stack",
+            "Stable geographic coordinates consistent with elevated flare stack",
             f"Persistent operational thermal signature across {active_days} active observation day(s)",
-            f"Steady-state radiative power of {frp} MW within normal operational envelope",
+            f"Steady-state radiative power of {frp} MW within normal operational flaring envelope",
             night_text,
         ]
-        explanation = f"Operational gas flare stack activity at {facility_name}."
         return "GAS_FLARE", conf_level, explanation, reasons
 
-    # -------------------------------------------------------------
-    # RULE 3: MINING ACTIVITY (Open-cast coal, iron ore, seam fires)
-    # -------------------------------------------------------------
+    # =========================================================================
+    # RULE 3: MINING ACTIVITY (Coalfields, Open-Cast Pits, Seam Fires)
+    # =========================================================================
     is_mining_zone = (
         facility_type == "mining"
         or context == "mining"
@@ -159,125 +174,120 @@ def _classify_single_hotspot(
         or "Coalfield" in facility_category
         or "Coal Basin" in facility_category
         or "Iron Ore" in facility_category
+        or "Mines" in facility_category
     )
 
     if is_mining_zone:
-        conf_level = "HIGH" if (active_days >= 2 or (distance_m is not None and distance_m <= 6000)) else "MEDIUM"
+        conf_level = "HIGH" if (active_days >= 2 or (distance_m is not None and distance_m <= 8000) or sat_conf in ("high", "h")) else "MEDIUM"
+        explanation = f"Classified as MINING_ACTIVITY because detection is located in {facility_name or 'active mining basin'} with surface mining or coal seam heat."
         reasons = [
             f"Located in designated mining basin / field ({facility_name or 'Mining Sector'})",
-            f"Thermal emission characteristic of surface mining, coal seam combustion, or ore processing",
+            "Thermal emission characteristic of surface open-cast mining or coal seam combustion",
             f"Repeated thermal presence across {active_days} active observation day(s)",
             f"Radiative power output of {frp} MW across surface extraction perimeter",
         ]
-        explanation = f"Open-cast mining and coal seam thermal signature at {facility_name or 'mining zone'}."
         return "MINING_ACTIVITY", conf_level, explanation, reasons
 
-    # -------------------------------------------------------------
-    # RULE 4: WILDFIRE (Forest reserve, wildlife sanctuary, canopy blaze)
-    # -------------------------------------------------------------
+    # =========================================================================
+    # RULE 4: WILDFIRE (Forest Reserves, National Parks, Wildlands)
+    # =========================================================================
     is_forest_zone = (
         facility_type == "forest"
         or context == "forest"
         or "Forest" in facility_category
         or "National Park" in facility_category
         or "Biosphere" in facility_category
+        or "Wildland" in facility_category
+        or "Canopy" in facility_category
     )
 
     if is_forest_zone:
-        conf_level = "HIGH" if (frp >= 25.0 or sat_conf in ("high", "h")) else "MEDIUM"
-        temp_text = f"High brightness temperature ({brightness} K)" if brightness else "Elevated thermal radiance"
+        conf_level = "HIGH" if (frp >= 20.0 or sat_conf in ("high", "h")) else "MEDIUM"
+        temp_text = f"Brightness temperature of {brightness} K" if brightness else f"Thermal output of {frp} MW"
+        explanation = f"Classified as WILDFIRE because detection is located in {facility_name or 'protected forest corridor'} with active vegetation fire."
         reasons = [
-            f"Located inside protected forest canopy / wildlife reserve ({facility_name or 'Forest Reserve'})",
-            f"High radiative intensity ({frp} MW) characteristic of active vegetative biomass fire",
+            f"Located inside protected forest canopy / wildlife reserve ({facility_name or 'Forest Canopy'})",
+            f"Radiative intensity of {frp} MW characteristic of active vegetative biomass fire",
             f"{temp_text} indicating spreading forest fire front",
             "Remote forest location far from industrial or mining infrastructure",
         ]
-        explanation = f"Wildfire and active forest canopy blaze detected in {facility_name or 'forest reserve'}."
         return "WILDFIRE", conf_level, explanation, reasons
 
-    # Remote wildland fire (high FRP far from any infrastructure)
-    if distance_m is None and context == "unassigned" and frp >= 35.0 and active_days <= 3:
-        # Check if coordinates match typical forest belts (Central India, Western Ghats, Northeast)
-        lat = float(hotspot.get("latitude", 0))
-        lon = float(hotspot.get("longitude", 0))
-        if (20.0 <= lat <= 26.0 and 78.0 <= lon <= 85.0) or (24.0 <= lat <= 29.0 and 89.0 <= lon <= 96.0):
-            reasons = [
-                f"Located in remote wildland / woodland belt with high biomass fuel load",
-                f"Significant radiative thermal output of {frp} MW",
-                f"No industrial or registered facility within 15+ km",
-                "Spreading thermal front typical of uncontrolled brush/wildfire",
-            ]
-            return "WILDFIRE", "MEDIUM", "Wildfire detection in remote vegetated wildland.", reasons
-
-    # -------------------------------------------------------------
-    # RULE 5: PERSISTENT INDUSTRIAL (Steel plants, Power plants, Smelters)
-    # -------------------------------------------------------------
+    # =========================================================================
+    # RULE 5: PERSISTENT INDUSTRIAL (Steel Works, Power Plants, Cement Hubs)
+    # =========================================================================
     is_heavy_industry = (
         facility_type == "heavy_industry"
         or "Steel" in facility_category
         or "Power" in facility_category
         or "Smelter" in facility_category
+        or "Cement" in facility_category
+        or "Aluminium" in facility_category
         or (facility_name is not None and not is_flare_facility and not is_mining_zone and not is_forest_zone)
     )
 
     if is_heavy_industry:
-        conf_level = "HIGH" if (active_days >= 3 or (distance_m is not None and distance_m <= 4000)) else "MEDIUM"
+        conf_level = "HIGH" if (active_days >= 2 or (distance_m is not None and distance_m <= 6000)) else "MEDIUM"
+        explanation = f"Classified as PERSISTENT_INDUSTRIAL because repeated thermal detections occurred at registered industrial asset {facility_name}."
         reasons = [
             f"Located within {dist_str} of registered industrial asset {facility_name}",
             f"Continuous process heat from {facility_category or 'industrial facility'}",
             f"Persistent thermal output observed across {active_days} observation day(s)",
             f"Mean operational FRP of {round(mean_frp, 1)} MW (Current: {frp} MW)",
         ]
-        explanation = f"Persistent operational industrial thermal emission at {facility_name}."
         return "PERSISTENT_INDUSTRIAL", conf_level, explanation, reasons
 
-    # High recurrence unassigned industrial cluster
-    if active_days >= 3 and frp >= 15.0 and context != "agricultural":
+    # Recurring cluster without registered facility name (Unregistered Industrial / Persistent Thermal Source)
+    if active_days >= 3 and frp >= 14.0:
         conf_level = "HIGH" if active_days >= 5 else "MEDIUM"
+        explanation = f"Classified as PERSISTENT_INDUSTRIAL because repeated thermal detections occurred over {active_days} observation days at fixed coordinates."
         reasons = [
-            f"Persistent thermal recurrence across {active_days} days at stable coordinates",
-            f"Sustained radiative power ({frp} MW) consistent with unlicensed/unregistered industrial process",
-            "Non-agricultural thermal signature operating outside registered asset boundaries",
-            "Flagged for environmental audit and site verification",
+            f"Persistent thermal recurrence across {active_days} days at stable geographic coordinates",
+            f"Sustained radiative power ({frp} MW) consistent with unlicensed or unregistered industrial facility",
+            "Non-agricultural thermal signature operating continuously outside registered asset database",
+            "Flagged for environmental compliance survey and site verification",
         ]
-        return "PERSISTENT_INDUSTRIAL", conf_level, "Persistent unregistered industrial thermal source.", reasons
+        return "PERSISTENT_INDUSTRIAL", conf_level, explanation, reasons
 
-    # -------------------------------------------------------------
-    # RULE 6: AGRICULTURAL BURNING (Crop stubble residue)
-    # -------------------------------------------------------------
+    # =========================================================================
+    # RULE 6: AGRICULTURAL BURNING (Stubble / Crop Residue Burning)
+    # Smart Regional Attribution for Agrarian Crop Basins
+    # =========================================================================
     is_agrarian = (
         context == "agricultural"
-        or "cropland" in str(hotspot.get("land_context", "")).lower()
-        or "crop" in str(hotspot.get("land_context", "")).lower()
+        or "cropland" in facility_category.lower()
+        or "crop" in facility_category.lower()
+        or "agricultural" in facility_category.lower()
     )
 
     if is_agrarian and facility_name is None:
         conf_level = "HIGH" if (active_days <= 2 and frp <= 35.0) else "MEDIUM"
+        explanation = f"Classified as AGRICULTURAL_BURNING because hotspot is located in an agricultural cropland basin with low persistence ({active_days} day)."
         reasons = [
             "Located in agrarian cropland basin with no industrial or mining infrastructure",
             f"Transient thermal signature active for only {active_days} observation day(s)",
             f"Low-to-moderate thermal output ({frp} MW) typical of open-field stubble/biomass burning",
             "Short-lived seasonal crop residue clearing profile",
         ]
-        explanation = "Agricultural crop residue / stubble burning in farming area."
         return "AGRICULTURAL_BURNING", conf_level, explanation, reasons
 
-    # -------------------------------------------------------------
-    # RULE 7: UNCLASSIFIED (Ambiguous / isolated thermal event)
-    # -------------------------------------------------------------
+    # =========================================================================
+    # RULE 7: UNCLASSIFIED (Truly ambiguous isolated thermal event)
+    # =========================================================================
+    explanation = f"Classified as UNCLASSIFIED because isolated thermal detection ({frp} MW) lacks definitive spatial or contextual attribution."
     reasons = [
         "Isolated thermal detection without definitive spatial or industrial attribution",
-        f"Low recurrence ({active_days} active day) and unassigned land context",
+        f"Low recurrence ({active_days} active day) in unassigned land context",
         f"Thermal output: {frp} MW",
         "Flagged for analyst triage and subsequent satellite overpass watch",
     ]
-    return "UNCLASSIFIED", "LOW", "Ambiguous thermal signature requiring analyst review.", reasons
+    return "UNCLASSIFIED", "LOW", explanation, reasons
 
 
 def classify_hotspots(hotspots: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Analyzes spatial, temporal, and facility characteristics of hotspots
-    and assigns 7-class taxonomy, confidence rating, and human-readable reasoning.
+    and assigns 7-class taxonomy, multi-factor confidence rating, and human-readable reasoning.
     """
     if not hotspots:
         return []
