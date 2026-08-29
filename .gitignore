@@ -1,0 +1,27 @@
+# Environment variables and API keys (CRITICAL - DO NOT COMMIT)
+.env
+*.env
+
+# Cache directories
+.cache/
+backend/ingestion/.cache/
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE and OS artifacts
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary and log files
+*.log
+scratch/

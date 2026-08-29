@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ThermalWatch Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #08111f;
+      color: #e5eefb;
+    }
+    .app-shell {
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      height: 100vh;
+    }
+    .sidebar {
+      background: linear-gradient(180deg, #0e172a 0%, #111c33 100%);
+      border-right: 1px solid #24324e;
+      padding: 20px;
+      overflow-y: auto;
+    }
+    .brand h1 { margin: 6px 0 8px; font-size: 28px; }
+    .brand .eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      color: #7dd3fc;
+      font-size: 12px;
+    }
+    .brand p { margin: 0; color: #9eb0cf; line-height: 1.5; }
+    .console-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      margin-top: 14px;
+      border-radius: 16px;
+      border: 1px solid rgba(125, 211, 252, 0.18);
+      background: linear-gradient(180deg, rgba(14, 23, 42, 0.92), rgba(17, 28, 51, 0.92));
+    }
+    .console-header .title {
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #7dd3fc;
+      margin-bottom: 4px;
+    }
+    .console-header .subtitle {
+      color: #f8fbff;
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .mode-switch {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .mode-pill {
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.04);
+      color: #9eb0cf;
+      font-size: 12px;
+    }
+    .mode-pill.active {
+      color: #f8fbff;
+      border-color: rgba(96, 165, 250, 0.35);
+      background: rgba(37, 99, 235, 0.18);
+    }
+    .status-strip {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+      margin-bottom: 6px;
+    }
+    .status-pill {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      padding: 10px 12px;
+      font-size: 12px;
+      color: #9eb0cf;
+      text-align: center;
+    }
+    .status-pill strong {
+      display: block;
+      color: #f8fbff;
+      font-size: 13px;
+      margin-top: 2px;
+    }
+    .panel {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 16px;
+      margin-top: 16px;
+    }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .summary-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 14px;
+    }
+    .summary-card .label {
+      color: #9eb0cf;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 8px;
+    }
+    .summary-card .value {
+      color: #f8fbff;
+      font-size: 24px;
+      font-weight: 700;
+    }
+    .summary-card .subvalue {
+      color: #9eb0cf;
+      font-size: 13px;
+      margin-top: 4px;
+    }
+    .cluster-mini {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+      font-size: 13px;
+      color: #9eb0cf;
+    }
+    .cluster-mini div {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 10px;
+      padding: 10px;
+    }
+    .cluster-mini strong {
+      display: block;
+      color: #f8fbff;
+      font-size: 16px;
+      margin-top: 4px;
+    }
+    .cluster-note {
+      margin-top: 10px;
+      color: #9eb0cf;
+      line-height: 1.5;
+      font-size: 14px;
+    }
+    .cluster-tag {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(239, 68, 68, 0.14);
+      border: 1px solid rgba(239, 68, 68, 0.25);
+      color: #fecaca;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .chart-shell {
+      margin-top: 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      padding: 10px;
+    }
+    .chart-note {
+      margin-top: 10px;
+      display: grid;
+      gap: 8px;
+      color: #9eb0cf;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .chart-note span {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      display: inline-block;
+      flex: 0 0 auto;
+    }
+    .chart-shell canvas {
+      width: 100% !important;
+      height: 220px !important;
+    }
+    .panel h2 { margin: 0 0 12px; font-size: 16px; color: #d8e6ff; }
+    #selected-title { font-size: 18px; font-weight: bold; margin-bottom: 4px; }
+    #selected-status, #alert-text, #timeline-label { color: #9eb0cf; line-height: 1.5; }
+    .details-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    .details-table td {
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      vertical-align: top;
+    }
+    .details-table td:first-child {
+      color: #9eb0cf;
+      width: 50%;
+      padding-right: 10px;
+    }
+    #timeline-slider {
+      width: 100%;
+      margin: 10px 0;
+    }
+    #type-filter {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: #0b1324;
+      color: #e5eefb;
+      outline: none;
+    }
+    .action-button {
+      display: inline-block;
+      width: 100%;
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: none;
+      background: #2563eb;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .action-button:hover {
+      background: #1d4ed8;
+    }
+    .map-wrap { position: relative; }
+    #map { width: 100%; height: 100%; }
+    #alert-banner {
+      display: none;
+      position: absolute;
+      z-index: 1000;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 12px 18px;
+      border: 1px solid #f97316;
+      border-radius: 10px;
+      background: #7c2d12;
+      color: white;
+      font-weight: bold;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+    .anomaly-marker {
+      width: 22px;
+      height: 22px;
+      border: 3px solid white;
+      border-radius: 50%;
+      background: #a855f7;
+      box-shadow: 0 0 18px #a855f7;
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+      50% { transform: scale(1.5); opacity: 0.55; }
+    }
+    .live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(34, 197, 94, 0.16);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.35);
+    }
+    .live-badge.demo {
+      background: rgba(234, 179, 8, 0.16);
+      color: #facc15;
+      border-color: rgba(234, 179, 8, 0.35);
+    }
+    .live-badge.cached {
+      background: rgba(56, 189, 248, 0.16);
+      color: #38bdf8;
+      border-color: rgba(56, 189, 248, 0.35);
+    }
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 6px currentColor;
+    }
+    .live-badge:not(.demo) .dot {
+      animation: pulse 1.5s infinite;
+    }
+    .control-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .control-row label {
+      font-size: 12px;
+      color: #9eb0cf;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .control-select {
+      width: 100%;
+      padding: 9px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: #0b1324;
+      color: #e5eefb;
+      font-size: 13px;
+      outline: none;
+    }
+    .control-select:focus {
+      border-color: #60a5fa;
+    }
+    .feed-notice-box {
+      font-size: 12px;
+      line-height: 1.4;
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: rgba(14, 165, 233, 0.1);
+      border: 1px solid rgba(14, 165, 233, 0.2);
+      color: #7dd3fc;
+      margin-top: 8px;
+    }
+    .badge-conf {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .badge-conf.high {
+      background: rgba(34, 197, 94, 0.18);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.4);
+    }
+    .badge-conf.medium {
+      background: rgba(234, 179, 8, 0.18);
+      color: #facc15;
+      border: 1px solid rgba(234, 179, 8, 0.4);
+    }
+    .badge-conf.low {
+      background: rgba(148, 163, 184, 0.18);
+      color: #cbd5e1;
+      border: 1px solid rgba(148, 163, 184, 0.4);
+    }
+    .why-box {
+      margin-top: 10px;
+      padding: 12px;
+      border-radius: 10px;
+      background: rgba(15, 23, 42, 0.65);
+      border: 1px solid rgba(125, 211, 252, 0.2);
+    }
+    .why-box h3 {
+      margin: 0 0 8px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #7dd3fc;
+    }
+    .why-box ul {
+      margin: 0;
+      padding-left: 18px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #cbd5e1;
+    }
+    .why-box li {
+      margin-bottom: 4px;
+    }
+    .legend-box {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-top: 8px;
+      font-size: 11px;
+      color: #9eb0cf;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .legend-swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    /* Map Mode Switcher Floating Control */
+    .map-view-switcher {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      z-index: 1000;
+      display: flex;
+      background: rgba(11, 19, 36, 0.88);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 12px;
+      padding: 4px;
+      gap: 4px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+    .view-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 13px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: transparent;
+      color: #9eb0cf;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .view-btn:hover {
+      color: #f8fbff;
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .view-btn.active {
+      background: #2563eb;
+      color: #ffffff;
+      border-color: rgba(255, 255, 255, 0.2);
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+    }
+    /* Thermal Intensity Floating Legend */
+    .thermal-legend-overlay {
+      position: absolute;
+      bottom: 24px;
+      right: 16px;
+      z-index: 1000;
+      background: rgba(11, 19, 36, 0.90);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 12px;
+      padding: 12px 16px;
+      min-width: 270px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .thermal-legend-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(12px);
+    }
+    .legend-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #cbd5e1;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .gradient-bar {
+      height: 9px;
+      border-radius: 999px;
+      background: linear-gradient(to right, #3b82f6 0%, #22c55e 25%, #facc15 50%, #f97316 75%, #ef4444 100%);
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.4);
+      margin-bottom: 6px;
+    }
+    .gradient-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #94a3b8;
+      line-height: 1.2;
+      text-align: center;
+    }
+    .gradient-labels span small {
+      color: #64748b;
+      display: block;
+      font-size: 9px;
+    }
+    @media (max-width: 900px) {
+      .app-shell {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 60vh;
+      }
+      .sidebar {
+        border-right: none;
+        border-bottom: 1px solid #24324e;
+      }
+      .map-view-switcher {
+        top: 10px;
+        right: 10px;
+      }
+      .thermal-legend-overlay {
+        bottom: 10px;
+        right: 10px;
+        min-width: 220px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="eyebrow">ThermalWatch</div>
+        <h1>Fire Inspection Console</h1>
+        <p>Analyst view for thermal anomaly triage and facility monitoring.</p>
+      </div>
+      <div class="console-header">
+        <div>
+          <div class="title">Thermal Intelligence</div>
+          <div id="live-badge" class="live-badge demo">
+            <span class="dot"></span>
+            <span id="badge-text">Demo Data</span>
+          </div>
+        </div>
+        <div class="mode-switch" aria-label="feed mode switch">
+          <div class="mode-pill active" id="mode-demo" style="cursor:pointer;">Demo</div>
+          <div class="mode-pill" id="mode-live" style="cursor:pointer;">Live FIRMS</div>
+        </div>
+      </div>
+      <div class="status-strip">
+        <div class="status-pill">Feed<strong id="status-mode">Simulated</strong></div>
+        <div class="status-pill">Scope<strong id="status-scope">All India</strong></div>
+        <div class="status-pill">Focus<strong>Industrial Fire</strong></div>
+      </div>
+      <div class="summary-grid">
+        <div class="summary-card">
+          <div class="label">Hotspots</div>
+          <div class="value" id="summary-hotspots">—</div>
+          <div class="subvalue">Visible on timeline</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">Clusters</div>
+          <div class="value" id="summary-clusters">—</div>
+          <div class="subvalue">Persistent industrial</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">Alerts</div>
+          <div class="value" id="summary-alerts">—</div>
+          <div class="subvalue">Critical spikes</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">Avg FRP</div>
+          <div class="value" id="summary-frp">—</div>
+          <div class="subvalue">MW thermal output</div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Selected Hotspot</h2>
+        <div id="selected-title">No hotspot selected</div>
+        <div id="selected-status">Click a marker on the map</div>
+      </div>
+      <div class="panel">
+        <h2>Inspection Fields</h2>
+        <table class="details-table">
+          <tr><td>Classification</td><td><span id="field-classification">—</span> <span id="field-confidence-badge" class="badge-conf high" style="display:none;">HIGH</span></td></tr>
+          <tr><td>FRP Output</td><td id="field-frp">—</td></tr>
+          <tr><td>Brightness Temp</td><td id="field-brightness">—</td></tr>
+          <tr><td>Detection Confidence</td><td id="field-confidence">—</td></tr>
+          <tr><td>Satellite / Sensor</td><td><span id="field-satellite">—</span> (<span id="field-sensor">—</span>)</td></tr>
+          <tr><td>Day / Night</td><td id="field-daynight">—</td></tr>
+          <tr><td>Land / Facility Context</td><td id="field-land">—</td></tr>
+          <tr><td>Active Days Tracked</td><td id="field-active-days">—</td></tr>
+          <tr><td>Distance to Facility</td><td id="field-distance">—</td></tr>
+          <tr><td>Risk Assessment</td><td><span id="field-risk-score">—</span> (<span id="field-risk">—</span>)</td></tr>
+          <tr><td>Inspection Priority</td><td id="field-priority">—</td></tr>
+        </table>
+        <div class="why-box" id="why-box">
+          <h3>Why Classified? (Decision Logic)</h3>
+          <ul id="why-reasons-list">
+            <li>Click any hotspot marker on the map to inspect the rule-based classification reasoning.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Critical Alert</h2>
+        <div id="alert-text">No critical alert yet.</div>
+      </div>
+      <div class="panel">
+        <h2>Cluster Focus</h2>
+        <div id="cluster-name">Loading cluster...</div>
+        <div class="cluster-mini">
+          <div>Active Days<strong id="cluster-active-days">—</strong></div>
+          <div>Detections<strong id="cluster-detections">—</strong></div>
+          <div>Mean FRP<strong id="cluster-mean-frp">—</strong></div>
+          <div>Peak FRP<strong id="cluster-peak-frp">—</strong></div>
+        </div>
+        <div id="cluster-classification" style="margin-top: 10px; color: #9eb0cf;">—</div>
+        <div id="cluster-tag" class="cluster-tag">recurring source</div>
+        <div id="cluster-note" class="cluster-note">
+          —
+        </div>
+      </div>
+      <div class="panel">
+        <h2>FRP Trend</h2>
+        <div class="chart-shell">
+          <canvas id="frp-trend-chart"></canvas>
+        </div>
+        <div class="chart-note">
+          <span><i class="swatch" style="background:#60a5fa"></i> normal recurring FRP baseline</span>
+          <span><i class="swatch" style="background:#a855f7"></i> selected day marker</span>
+          <span><i class="swatch" style="background:#ef4444"></i> critical excursion spike</span>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Timeline</h2>
+        <input id="timeline-slider" type="range" min="0" max="29" value="29" />
+        <div id="timeline-label">Loading timeline...</div>
+      </div>
+      <div class="panel">
+        <h2>Live Satellite Ingestion</h2>
+        <div class="control-row">
+          <label for="region-select">Geospatial Scope</label>
+          <select id="region-select" class="control-select">
+            <option value="india">India National (All India)</option>
+            <option value="jamnagar">Jamnagar Industrial Hub (Gujarat)</option>
+            <option value="ncr">NCR & Punjab Agricultural Belt</option>
+            <option value="steel">Odisha / Jharkhand Steel & Mining Belt</option>
+          </select>
+        </div>
+        <div class="control-row">
+          <label for="sensor-select">Sensor & Instrument</label>
+          <select id="sensor-select" class="control-select">
+            <option value="VIIRS_SNPP_NRT">VIIRS (Suomi-NPP 375m)</option>
+            <option value="VIIRS_NOAA20_NRT">VIIRS (NOAA-20 375m)</option>
+            <option value="MODIS_NRT">MODIS (Aqua/Terra 1km)</option>
+          </select>
+        </div>
+        <button id="btn-refresh-feed" class="action-button" style="background:#0f766e; margin-top:4px;" type="button">
+          ↻ Sync NASA FIRMS Feed
+        </button>
+        <div id="feed-notice" class="feed-notice-box">
+          Ready to query NASA FIRMS NRT sensors.
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Thermal Taxonomy Filter</h2>
+        <select id="type-filter" class="control-select">
+          <option value="all">All Classes (7 Categories)</option>
+          <option value="GAS_FLARE">Gas Flares (Refineries / LNG)</option>
+          <option value="INDUSTRIAL_FIRE">Industrial Fires (Spikes)</option>
+          <option value="AGRICULTURAL_BURNING">Agricultural Burning (Stubble)</option>
+          <option value="MINING_ACTIVITY">Mining Activity (Coal / Ore)</option>
+          <option value="WILDFIRE">Wildfires (Forest / Canopy)</option>
+          <option value="PERSISTENT_INDUSTRIAL">Persistent Industrial (Steel / Power)</option>
+          <option value="UNCLASSIFIED">Unclassified Anomaly</option>
+        </select>
+        <div class="legend-box">
+          <div class="legend-item"><span class="legend-swatch" style="background:#06b6d4"></span> Gas Flare</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#ef4444"></span> Industrial Fire</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#facc15"></span> Agro Burning</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#f97316"></span> Mining Activity</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#ec4899"></span> Wildfire</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#8b5cf6"></span> Persistent Ind.</div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Regulatory Compliance</h2>
+        <button id="download-dossier" class="action-button" type="button">
+          Download Compliance Dossier
+        </button>
+      </div>
+    </aside>
+    <main class="map-wrap">
+      <!-- 3 Map Modes Switcher Control -->
+      <div class="map-view-switcher" id="map-view-switcher" aria-label="Map View Mode">
+        <button type="button" class="view-btn" id="btn-mode-standard" data-mode="standard">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+          Standard
+        </button>
+        <button type="button" class="view-btn" id="btn-mode-thermal" data-mode="thermal">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7zM9 21h6"/></svg>
+          Thermal
+        </button>
+        <button type="button" class="view-btn active" id="btn-mode-hybrid" data-mode="hybrid">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+          Hybrid
+        </button>
+      </div>
+
+      <!-- Floating Thermal Intensity Gradient Legend -->
+      <div class="thermal-legend-overlay" id="thermal-legend-overlay">
+        <div class="legend-title">
+          <span>Thermal Intensity (FRP)</span>
+          <span style="font-size: 10px; color: #38bdf8;">MW Scale</span>
+        </div>
+        <div class="gradient-bar"></div>
+        <div class="gradient-labels">
+          <span>Very Low<small>&lt;10 MW</small></span>
+          <span>Low<small>25 MW</small></span>
+          <span>Moderate<small>50 MW</small></span>
+          <span>High<small>80 MW</small></span>
+          <span>Extreme<small>&gt;100 MW</small></span>
+        </div>
+      </div>
+
+      <div id="map"></div>
+      <div id="alert-banner"></div>
+    </main>
+  </div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script>
+    const map = L.map("map").setView([25.5, 74], 5);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(map);
+
+    function markerColor(classification) {
+      switch (classification) {
+        case "GAS_FLARE": return "#06b6d4";
+        case "INDUSTRIAL_FIRE": return "#ef4444";
+        case "AGRICULTURAL_BURNING": return "#facc15";
+        case "MINING_ACTIVITY": return "#f97316";
+        case "WILDFIRE": return "#ec4899";
+        case "PERSISTENT_INDUSTRIAL": return "#8b5cf6";
+        default: return "#94a3b8";
+      }
+    }
+
+    function setField(id, value) {
+      document.getElementById(id).textContent = value ?? "—";
+    }
+
+    function showHotspotDetails(hotspot) {
+      setField("selected-title", hotspot.facility_name || hotspot.explanation || "Thermal Anomaly");
+      setField("selected-status", `${hotspot.timestamp.slice(0, 10)} • Lat: ${hotspot.latitude}, Lon: ${hotspot.longitude}`);
+      
+      const classEl = document.getElementById("field-classification");
+      classEl.textContent = hotspot.classification || "UNCLASSIFIED";
+      classEl.style.color = markerColor(hotspot.classification);
+      
+      const confBadge = document.getElementById("field-confidence-badge");
+      const confLevel = (hotspot.confidence_level || "MEDIUM").toUpperCase();
+      confBadge.textContent = `${confLevel} CONFIDENCE`;
+      confBadge.className = `badge-conf ${confLevel.toLowerCase()}`;
+      confBadge.style.display = "inline-block";
+
+      setField("field-frp", `${hotspot.frp} MW`);
+      setField("field-brightness", hotspot.brightness_temp ? `${hotspot.brightness_temp} K` : "N/A");
+      setField("field-confidence", hotspot.confidence || "nominal");
+      setField("field-satellite", hotspot.satellite || "VIIRS");
+      setField("field-sensor", hotspot.sensor || "VIIRS");
+      setField("field-daynight", hotspot.day_night === "N" ? "Night (24/7)" : "Daytime");
+      setField("field-land", hotspot.facility_category || hotspot.land_context || hotspot.context || "unassigned");
+      setField("field-active-days", hotspot.active_days ? `${hotspot.active_days} days` : "1 day");
+      setField("field-distance", hotspot.distance_to_facility_m ? `${Math.round(hotspot.distance_to_facility_m)} m` : "N/A");
+      setField("field-risk-score", `${hotspot.risk_score || 35.0} / 100`);
+      setField("field-risk", (hotspot.risk_level || "medium").toUpperCase());
+      setField("field-priority", (hotspot.inspection_priority || "routine").toUpperCase());
+
+      // Populate Why Classified? reasoning list
+      const reasonsList = document.getElementById("why-reasons-list");
+      reasonsList.innerHTML = "";
+      const reasons = (hotspot.reasons && hotspot.reasons.length > 0) 
+        ? hotspot.reasons 
+        : [hotspot.explanation || "Thermal signature identified by decision engine."];
+      
+      reasons.forEach(r => {
+        const li = document.createElement("li");
+        li.innerHTML = `<span style="color:#38bdf8; font-weight:bold; margin-right:4px;">✓</span> ${r}`;
+        reasonsList.appendChild(li);
+      });
+    }
+
+    function updateSummary(totalHotspots, totalClusters, totalAlerts, averageFrp) {
+      document.getElementById("summary-hotspots").textContent = totalHotspots;
+      document.getElementById("summary-clusters").textContent = totalClusters;
+      document.getElementById("summary-alerts").textContent = totalAlerts;
+      document.getElementById("summary-frp").textContent = `${averageFrp.toFixed(1)} MW`;
+    }
+
+    function updateClusterFocus(cluster) {
+      if (!cluster) {
+        document.getElementById("cluster-name").textContent = "No cluster found";
+        return;
+      }
+
+      document.getElementById("cluster-name").textContent = cluster.facility_name;
+      document.getElementById("cluster-active-days").textContent = cluster.active_days;
+      document.getElementById("cluster-detections").textContent = cluster.detection_count;
+      document.getElementById("cluster-mean-frp").textContent = `${cluster.mean_frp} MW`;
+      document.getElementById("cluster-peak-frp").textContent = `${cluster.peak_frp} MW`;
+      document.getElementById("cluster-classification").innerHTML =
+        `Classification: <strong style="color:${markerColor(cluster.classification)}">${cluster.classification}</strong> [${cluster.confidence_level || 'HIGH'}]`;
+      document.getElementById("cluster-tag").textContent =
+        cluster.classification === "INDUSTRIAL_FIRE"
+          ? "CRITICAL FIRE EXCURSION"
+          : (cluster.classification === "GAS_FLARE" ? "operational gas flare" : "persistent thermal asset");
+      
+      const noteReasons = (cluster.reasons || []).slice(0, 3).map(r => `• ${r}`).join("<br/>");
+      document.getElementById("cluster-note").innerHTML = noteReasons || cluster.explanation || "Active thermal profile.";
+    }
+
+    function buildFrpTrendChart(hotspots, selectedIndex) {
+      const daily = new Map();
+
+      hotspots.forEach((hotspot) => {
+        const day = hotspot.timestamp.slice(0, 10);
+        if (!daily.has(day)) {
+          daily.set(day, []);
+        }
+        daily.get(day).push(hotspot.frp);
+      });
+
+      const labels = Array.from(daily.keys());
+      const values = labels.map((day) => {
+        const arr = daily.get(day);
+        return arr.reduce((sum, frp) => sum + frp, 0) / arr.length;
+      });
+
+      const pointColors = labels.map((_, index) =>
+        index === selectedIndex ? "#a855f7" : "#60a5fa"
+      );
+
+      if (frpTrendChart) {
+        frpTrendChart.destroy();
+      }
+
+      frpTrendChart = new Chart(document.getElementById("frp-trend-chart"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "Daily mean FRP",
+              data: values,
+              borderColor: "#60a5fa",
+              backgroundColor: "rgba(96, 165, 250, 0.15)",
+              fill: true,
+              tension: 0.35,
+              pointRadius: 4,
+              pointHoverRadius: 6,
+              pointBackgroundColor: pointColors,
+              pointBorderColor: pointColors,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: { color: "#d8e6ff" },
+            },
+          },
+          scales: {
+            x: {
+              ticks: {
+                color: "#9eb0cf",
+                maxRotation: 0,
+                autoSkip: true,
+              },
+              grid: { color: "rgba(255,255,255,0.06)" },
+            },
+            y: {
+              ticks: { color: "#9eb0cf" },
+              grid: { color: "rgba(255,255,255,0.06)" },
+            },
+          },
+        },
+      });
+    }
+
+    let currentMapMode = localStorage.getItem("thermalwatch_map_mode") || "hybrid";
+    let allHotspots = [];
+    let allClusters = [];
+    let currentMarkers = [];
+    let currentClusterLayers = [];
+    let currentHeatLayer = null;
+    let alertMarkers = [];
+    let frpTrendChart = null;
+
+    const THERMAL_GRADIENT = {
+      0.10: "#3b82f6", // Blue - Very Low (<10 MW)
+      0.28: "#22c55e", // Green - Low (10-25 MW)
+      0.52: "#facc15", // Yellow - Moderate (25-50 MW)
+      0.75: "#f97316", // Orange - High (50-80 MW)
+      1.00: "#ef4444", // Red - Extreme (>80 MW)
+    };
+
+    function clearMapOverlays() {
+      currentMarkers.forEach((marker) => map.removeLayer(marker));
+      currentMarkers = [];
+      currentClusterLayers.forEach((layer) => map.removeLayer(layer));
+      currentClusterLayers = [];
+      if (currentHeatLayer) {
+        map.removeLayer(currentHeatLayer);
+        currentHeatLayer = null;
+      }
+    }
+
+    function renderClusterBoundaries() {
+      currentClusterLayers.forEach((layer) => map.removeLayer(layer));
+      currentClusterLayers = [];
+
+      // Cluster boundaries are shown in Standard and Hybrid modes
+      if (currentMapMode === "thermal") return;
+
+      allClusters.forEach((cluster) => {
+        const isFire = cluster.classification === "INDUSTRIAL_FIRE";
+        const color = isFire
+          ? "#ef4444"
+          : (cluster.classification === "GAS_FLARE" ? "#06b6d4" : "#8b5cf6");
+
+        const circle = L.circle([cluster.latitude, cluster.longitude], {
+          radius: 5000, // 5km boundary perimeter
+          color: color,
+          fillColor: color,
+          fillOpacity: 0.08,
+          weight: 1.5,
+          dashArray: "4, 6",
+        }).addTo(map);
+
+        circle.bindTooltip(`<strong>${cluster.facility_name}</strong><br/>${cluster.classification} • ${cluster.detection_count} detections`, {
+          sticky: true,
+          direction: "top",
+        });
+
+        circle.on("click", () => updateClusterFocus(cluster));
+        currentClusterLayers.push(circle);
+      });
+    }
+
+    function renderTimeline(dayIndex) {
+      clearMapOverlays();
+      if (!allHotspots || allHotspots.length === 0) return;
+      const clampedIndex = Math.min(dayIndex, allHotspots.length - 1);
+      const selectedDate = allHotspots[clampedIndex].timestamp.slice(0, 10);
+      document.getElementById("timeline-label").textContent = selectedDate;
+      const filterValue = document.getElementById("type-filter").value;
+
+      const visibleHotspots = allHotspots.filter((hotspot) => {
+        const dateMatch = hotspot.timestamp.slice(0, 10) <= selectedDate;
+        if (!dateMatch) return false;
+
+        if (filterValue === "all") return true;
+        return hotspot.classification === filterValue;
+      });
+
+      // Update thermal legend visibility based on active map mode
+      const legendOverlay = document.getElementById("thermal-legend-overlay");
+      if (currentMapMode === "standard") {
+        legendOverlay.classList.add("hidden");
+      } else {
+        legendOverlay.classList.remove("hidden");
+      }
+
+      // 1. Render Thermal Heatmap Layer (for 'thermal' and 'hybrid' modes)
+      if (currentMapMode === "thermal" || currentMapMode === "hybrid") {
+        const heatPoints = visibleHotspots.map((h) => {
+          const intensityWeight = Math.min(1.0, Math.max(0.12, (h.frp || 5.0) / 80.0));
+          return [h.latitude, h.longitude, intensityWeight];
+        });
+
+        currentHeatLayer = L.heatLayer(heatPoints, {
+          radius: 38,
+          blur: 26,
+          maxZoom: 9,
+          max: 1.0,
+          gradient: THERMAL_GRADIENT,
+        }).addTo(map);
+      }
+
+      // 2. Render Cluster Boundaries (for 'standard' and 'hybrid' modes)
+      if (currentMapMode === "standard" || currentMapMode === "hybrid") {
+        renderClusterBoundaries();
+      }
+
+      // 3. Render Hotspot Markers (for 'standard' and 'hybrid' modes)
+      if (currentMapMode === "standard" || currentMapMode === "hybrid") {
+        visibleHotspots.forEach((hotspot) => {
+          const isSpike = hotspot.classification === "INDUSTRIAL_FIRE" || (hotspot.frp >= 90);
+          const reasonsListHtml = (hotspot.reasons || [hotspot.explanation || ""])
+            .map((r) => `<li style="margin-bottom:3px;"><span style="color:#0284c7">✓</span> ${r}</li>`)
+            .join("");
+
+          const popupContent = `
+            <div style="font-family:system-ui, sans-serif; font-size:12px; line-height:1.4; min-width:220px; max-width:280px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; border-bottom:1px solid #e2e8f0; padding-bottom:4px;">
+                <strong style="color:${markerColor(hotspot.classification)}; font-size:13px;">${hotspot.classification}</strong>
+                <span style="font-size:10px; font-weight:700; background:#e0f2fe; color:#0369a1; padding:2px 6px; border-radius:4px;">${(hotspot.confidence_level || 'HIGH')} CONF</span>
+              </div>
+              <div><strong>Facility / Asset:</strong> ${hotspot.facility_name || hotspot.land_context || "Agrarian / Wildland"}</div>
+              <div><strong>Thermal Radiance:</strong> ${hotspot.frp} MW ${hotspot.brightness_temp ? `(${hotspot.brightness_temp} K)` : ''}</div>
+              <div><strong>Persistence:</strong> ${hotspot.active_days || 1} observation day(s)</div>
+              <div style="margin-top:6px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:6px 8px;">
+                <strong style="font-size:11px; color:#334155; display:block; margin-bottom:4px;">Why Classified:</strong>
+                <ul style="margin:0; padding-left:14px; font-size:11px; color:#475569;">
+                  ${reasonsListHtml}
+                </ul>
+              </div>
+            </div>
+          `;
+
+          const marker = L.circleMarker([hotspot.latitude, hotspot.longitude], {
+            radius: isSpike ? 9 : (hotspot.classification === "GAS_FLARE" || hotspot.classification === "PERSISTENT_INDUSTRIAL" ? 7 : 5),
+            color: isSpike ? "#ffffff" : markerColor(hotspot.classification),
+            fillColor: markerColor(hotspot.classification),
+            fillOpacity: currentMapMode === "hybrid" ? 0.95 : 0.85,
+            weight: isSpike ? 2 : 1.2,
+          })
+            .addTo(map)
+            .bindPopup(popupContent)
+            .on("click", () => showHotspotDetails(hotspot));
+
+          currentMarkers.push(marker);
+        });
+      }
+
+      if (visibleHotspots.length > 0) {
+        showHotspotDetails(visibleHotspots[visibleHotspots.length - 1]);
+      }
+
+      buildFrpTrendChart(allHotspots, clampedIndex);
+    }
+
+    function setMapMode(mode) {
+      currentMapMode = mode;
+      localStorage.setItem("thermalwatch_map_mode", mode);
+
+      document.querySelectorAll(".view-btn").forEach((btn) => {
+        if (btn.dataset.mode === mode) {
+          btn.classList.add("active");
+        } else {
+          btn.classList.remove("active");
+        }
+      });
+
+      const slider = document.getElementById("timeline-slider");
+      if (allHotspots.length > 0) {
+        renderTimeline(Number(slider.value));
+      }
+    }
+
+    const REGION_CONFIGS = {
+      india: { name: "All India", country: null, bbox: "68.1,6.7,97.4,35.5", center: [22.5, 78.5], zoom: 5 },
+      jamnagar: { name: "Jamnagar Hub", country: null, bbox: "69.5,22.0,71.0,23.0", center: [22.47, 70.06], zoom: 9 },
+      ncr: { name: "NCR & Punjab", country: null, bbox: "75.0,28.0,78.5,31.5", center: [29.8, 76.8], zoom: 7 },
+      steel: { name: "Steel Belt", country: null, bbox: "83.5,21.0,87.2,24.5", center: [22.8, 85.5], zoom: 7 },
+    };
+
+    let currentMode = "demo";
+    let currentRegionKey = "india";
+    let currentSensor = "VIIRS_SNPP_NRT";
+    let focusedClusterId = "jamnagar-refinery";
+
+    function updateBadge(mode, cached, cacheAge) {
+      const badge = document.getElementById("live-badge");
+      const text = document.getElementById("badge-text");
+      const statusMode = document.getElementById("status-mode");
+
+      badge.classList.remove("demo", "cached");
+      if (mode === "live") {
+        text.textContent = "Live NASA Feed";
+        statusMode.textContent = "Live Stream";
+      } else if (mode === "cached" || cached) {
+        badge.classList.add("cached");
+        text.textContent = `Cached (${cacheAge || 0}s ago)`;
+        statusMode.textContent = "Cached Feed";
+      } else {
+        badge.classList.add("demo");
+        text.textContent = "Demo Data";
+        statusMode.textContent = "Simulated";
+      }
+    }
+
+    function clearAlertMarkers() {
+      alertMarkers.forEach((marker) => map.removeLayer(marker));
+      alertMarkers = [];
+      document.getElementById("alert-banner").style.display = "none";
+    }
+
+    async function loadConsoleData(forceRefresh = false) {
+      const noticeBox = document.getElementById("feed-notice");
+      noticeBox.textContent = forceRefresh ? "Refreshing NASA FIRMS satellite data..." : "Loading thermal data...";
+
+      const region = REGION_CONFIGS[currentRegionKey] || REGION_CONFIGS.india;
+      document.getElementById("status-scope").textContent = region.name;
+
+      const params = new URLSearchParams();
+      params.set("mode", currentMode);
+      params.set("source", currentSensor);
+      params.set("days", "3");
+      if (forceRefresh) params.set("force_refresh", "true");
+      if (region.country) params.set("country", region.country);
+      if (region.bbox) params.set("bbox", region.bbox);
+
+      const endpoint = currentMode === "demo"
+        ? "/api/v1/demo/offline-data"
+        : `/api/v1/live-data?${params.toString()}`;
+
+      try {
+        const [hotspotRes, clusterRes, alertRes] = await Promise.all([
+          fetch(endpoint).then((r) => r.json()),
+          fetch(`/api/v1/clusters/persistent?mode=${currentMode}&source=${currentSensor}`).then((r) => r.json()),
+          fetch(`/api/v1/alerts?mode=${currentMode}&source=${currentSensor}`).then((r) => r.json()),
+        ]);
+
+        const rawHotspots = hotspotRes.hotspots || [];
+        allHotspots = rawHotspots.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        allClusters = clusterRes.clusters || [];
+
+        // Update notice & badges
+        const mode = hotspotRes.mode || (currentMode === "demo" ? "demo" : "live");
+        const isCached = hotspotRes.metadata?.cached;
+        const cacheAge = hotspotRes.metadata?.cache_age_seconds;
+        updateBadge(mode, isCached, cacheAge);
+
+        noticeBox.textContent = hotspotRes.notice || `Loaded ${allHotspots.length} hotspots (${region.name}).`;
+
+        // Update Slider
+        const slider = document.getElementById("timeline-slider");
+        if (allHotspots.length > 0) {
+          slider.min = 0;
+          slider.max = allHotspots.length - 1;
+          slider.value = allHotspots.length - 1;
+          renderTimeline(Number(slider.value));
+        } else {
+          clearMapOverlays();
+          setField("selected-title", "No hotspots detected");
+          setField("selected-status", "Zero thermal anomalies in selected window");
+          noticeBox.textContent = "No thermal anomalies detected in the selected spatial window.";
+        }
+
+        // Summary Stats
+        const avgFrp = allHotspots.length > 0
+          ? allHotspots.reduce((sum, h) => sum + (h.frp || 0), 0) / allHotspots.length
+          : 0;
+
+        updateSummary(
+          allHotspots.length,
+          allClusters.length,
+          alertRes.total_alerts || 0,
+          avgFrp
+        );
+
+        // Focus Cluster
+        if (allClusters.length > 0) {
+          const mainCluster = allClusters[0];
+          focusedClusterId = mainCluster.cluster_id;
+          updateClusterFocus(mainCluster);
+          document.getElementById("download-dossier").textContent = `Download ${mainCluster.facility_name} Dossier`;
+        } else {
+          focusedClusterId = null;
+          updateClusterFocus(null);
+          document.getElementById("download-dossier").textContent = "Download Compliance Dossier";
+        }
+
+        // Alerts Processing
+        clearAlertMarkers();
+        if (alertRes.total_alerts > 0) {
+          const alert = alertRes.alerts[0];
+          document.getElementById("alert-text").textContent = `${alert.facility_name}: ${alert.message}`;
+          const banner = document.getElementById("alert-banner");
+          banner.textContent = `CRITICAL ALERT: ${alert.facility_name} — ${alert.current_frp} MW FRP`;
+          banner.style.display = "block";
+
+          alertRes.alerts.forEach((alt) => {
+            const anomalyIcon = L.divIcon({
+              className: "",
+              html: '<div class="anomaly-marker"></div>',
+              iconSize: [22, 22],
+              iconAnchor: [11, 11],
+            });
+
+            const marker = L.marker([alt.latitude, alt.longitude], { icon: anomalyIcon })
+              .addTo(map)
+              .bindPopup(`
+                <strong>CRITICAL THERMAL SPIKE</strong><br>
+                Facility: ${alt.facility_name}<br>
+                Current FRP: ${alt.current_frp} MW<br>
+                Normal Mean: ${alt.baseline_mean_frp} MW<br>
+                Baseline Std Dev: ${alt.baseline_std_dev_frp} MW<br>
+                Z-Score: ${alt.z_score}<br>
+                Recommendation: ${alt.recommendation}
+              `);
+
+            alertMarkers.push(marker);
+          });
+        } else {
+          document.getElementById("alert-text").textContent = "No active thermal spikes exceeding 3σ threshold.";
+        }
+
+      } catch (err) {
+        console.error("Failed to load dashboard data:", err);
+        noticeBox.textContent = `Error loading satellite feed: ${err.message}`;
+      }
+    }
+
+    // UI Event Listeners
+    document.querySelectorAll(".view-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        setMapMode(btn.dataset.mode);
+      });
+    });
+
+    document.getElementById("mode-demo").addEventListener("click", () => {
+      currentMode = "demo";
+      document.getElementById("mode-demo").classList.add("active");
+      document.getElementById("mode-live").classList.remove("active");
+      loadConsoleData();
+    });
+
+    document.getElementById("mode-live").addEventListener("click", () => {
+      currentMode = "auto";
+      document.getElementById("mode-live").classList.add("active");
+      document.getElementById("mode-demo").classList.remove("active");
+      loadConsoleData();
+    });
+
+    document.getElementById("region-select").addEventListener("change", (e) => {
+      currentRegionKey = e.target.value;
+      const cfg = REGION_CONFIGS[currentRegionKey];
+      if (cfg) {
+        map.flyTo(cfg.center, cfg.zoom);
+      }
+      loadConsoleData();
+    });
+
+    document.getElementById("sensor-select").addEventListener("change", (e) => {
+      currentSensor = e.target.value;
+      loadConsoleData();
+    });
+
+    document.getElementById("btn-refresh-feed").addEventListener("click", () => {
+      loadConsoleData(true);
+    });
+
+    document.getElementById("timeline-slider").addEventListener("input", (e) => {
+      if (allHotspots.length > 0) {
+        renderTimeline(Number(e.target.value));
+      }
+    });
+
+    document.getElementById("type-filter").addEventListener("change", () => {
+      const slider = document.getElementById("timeline-slider");
+      if (allHotspots.length > 0) {
+        renderTimeline(Number(slider.value));
+      }
+    });
+
+    document.getElementById("download-dossier").addEventListener("click", () => {
+      const targetId = focusedClusterId || "jamnagar-refinery";
+      window.open(`/api/v1/reports/${targetId}/dossier?mode=${currentMode}`, "_blank");
+    });
+
+    // Initialize map mode from localStorage and load console
+    setMapMode(currentMapMode);
+    loadConsoleData();
+  </script>
+</body>
+</html>
