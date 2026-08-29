@@ -74,22 +74,39 @@ export function MapView({
 
     setMap(initialMap);
 
-    // Invalidate size once DOM layout completes
-    setTimeout(() => {
-      initialMap.invalidateSize();
+    // Invalidate size once DOM layout completes safely
+    const timer = setTimeout(() => {
+      if (initialMap && initialMap._container) {
+        try {
+          initialMap.invalidateSize();
+        } catch (e) {
+          // Ignore if map unmounted
+        }
+      }
     }, 150);
 
     let resizeObserver = null;
     if (window.ResizeObserver && mapContainerRef.current) {
       resizeObserver = new ResizeObserver(() => {
-        initialMap.invalidateSize();
+        if (initialMap && initialMap._container) {
+          try {
+            initialMap.invalidateSize();
+          } catch (e) {
+            // Ignore if map unmounted
+          }
+        }
       });
       resizeObserver.observe(mapContainerRef.current);
     }
 
     return () => {
+      clearTimeout(timer);
       if (resizeObserver) resizeObserver.disconnect();
-      initialMap.remove();
+      try {
+        initialMap.remove();
+      } catch (e) {
+        // Ignore unmount errors
+      }
       setMap(null);
     };
   }, []);

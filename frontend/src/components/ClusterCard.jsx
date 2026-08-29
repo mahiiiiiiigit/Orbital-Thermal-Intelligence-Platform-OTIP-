@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Factory, Flame, FileText, ChevronRight, Gauge, Layers } from 'lucide-react';
+import { Factory, Flame, FileText, ChevronRight, Gauge, Layers, Activity } from 'lucide-react';
 import { TAXONOMY_COLORS } from '../constants/taxonomy';
 import { RiskBadge } from './RiskBadge';
 import { getDossierDownloadUrl } from '../services/api';
