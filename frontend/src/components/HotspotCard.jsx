@@ -16,6 +16,8 @@ import {
   PhoneCall,
   Truck,
   X,
+  AlertTriangle,
+  LifeBuoy,
 } from 'lucide-react';
 import { fetchEmergencyRoute, fetchNearestSafetyResources, getDossierDownloadUrl } from '../services/api';
 
@@ -29,15 +31,15 @@ export function HotspotCard({
   const [loadingRoute, setLoadingRoute] = useState(false);
   const [routeError, setRouteError] = useState(null);
 
-  // Contextual Emergency Response Dropdown State (CLOSED by default)
-  const [isOpenResources, setIsOpenResources] = useState(false);
+  // Contextual Emergency Response Section State (CLOSED by default)
+  const [isOpenRespond, setIsOpenRespond] = useState(false);
   const [showEvacSection, setShowEvacSection] = useState(false);
   const [triageData, setTriageData] = useState(null);
   const [loadingTriage, setLoadingTriage] = useState(false);
 
-  // Reset dropdown when hotspot changes
+  // Reset respond state when selected hotspot changes
   useEffect(() => {
-    setIsOpenResources(false);
+    setIsOpenRespond(false);
     setShowEvacSection(false);
     setTriageData(null);
   }, [hotspot?.id || hotspot?.latitude]);
@@ -77,14 +79,22 @@ export function HotspotCard({
     ? hotspot.reasons
     : [hotspot.explanation || 'Thermal signature evaluated by decision engine.'];
 
-  // Logic: Show Emergency Response section for potentially dangerous events
-  const isDangerousEvent =
+  // Identify Critical Thermal Spikes / Industrial Excursions
+  const isCriticalSpike =
     hotspot.classification === 'INDUSTRIAL_FIRE' ||
-    hotspot.classification === 'WILDFIRE' ||
-    hotspot.large_forest_fire === true ||
-    (hotspot.classification === 'GAS_FLARE' && (hotspot.frp >= 40 || (hotspot.risk_score && hotspot.risk_score >= 50))) ||
-    hotspot.risk_level === 'critical' ||
-    hotspot.risk_level === 'high' ||
+    Boolean(hotspot.z_score && hotspot.z_score >= 3.0) ||
+    Boolean(hotspot.severity === 'CRITICAL');
+
+  // Identify Wildfires with high or critical risk
+  const isWildfireHighRisk =
+    hotspot.classification === 'WILDFIRE' &&
+    (hotspot.risk_level === 'high' || hotspot.risk_level === 'critical' || hotspot.fire_danger_level === 'HIGH' || hotspot.fire_danger_level === 'EXTREME' || hotspot.large_forest_fire);
+
+  // General dangerous event condition where [RESPOND] action is available
+  const canRespond =
+    isCriticalSpike ||
+    isWildfireHighRisk ||
+    (hotspot.classification === 'GAS_FLARE' && hotspot.frp >= 40) ||
     (hotspot.risk_score && hotspot.risk_score >= 55);
 
   const nearest = triageData?.nearest_resources || {};
@@ -97,7 +107,7 @@ export function HotspotCard({
         { key: 'fire_station', label: 'Forest Fire Response Base' },
         { key: 'hospital', label: 'Nearest Hospital & Burn Care' },
         { key: 'police', label: 'Police & SDRF Outpost' },
-        { key: 'shelter', label: 'Designated Safe Evacuation Shelter' },
+        { key: 'shelter', label: 'Official Evacuation / Safe Location' },
       ];
     }
     return [
@@ -157,7 +167,7 @@ export function HotspotCard({
 
   return (
     <div className="bg-white dark:bg-dark-850/90 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-3.5 shadow-md dark:shadow-xl backdrop-blur-md transition-colors duration-200">
-      {/* 1. Header Card */}
+      {/* 1. Header: Classification, Confidence, Facility, Lat/Lon, Date */}
       <div className="flex items-start justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-2.5">
         <div>
           <div className="flex items-center gap-1.5">
@@ -179,7 +189,7 @@ export function HotspotCard({
           </h3>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
             {hotspot.state ? `${hotspot.district || ''}, ${hotspot.state} • ` : ''}
-            {hotspot.timestamp?.slice(0, 16).replace('T', ' ')} UTC
+            {hotspot.latitude?.toFixed(4)}°N, {hotspot.longitude?.toFixed(4)}°E • {hotspot.timestamp?.slice(0, 16).replace('T', ' ')} UTC
           </p>
         </div>
         <div className="flex flex-col items-end gap-1">
@@ -190,7 +200,27 @@ export function HotspotCard({
         </div>
       </div>
 
-      {/* 2. Large Forest Fire Alert Banner */}
+      {/* 2. Critical Thermal Spike Section (Appears for genuinely critical events) */}
+      {isCriticalSpike && (
+        <div className="bg-red-950/40 border border-red-500/40 rounded-xl p-3 space-y-2 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-red-400 uppercase tracking-wider flex items-center gap-1.5">
+              <ShieldAlert className="w-4 h-4 text-red-500" />
+              <span>Critical Thermal Spike</span>
+            </span>
+            <span className="text-[10px] font-mono text-red-300 font-bold">
+              Z-Score: +{hotspot.z_score || '4.5'}σ
+            </span>
+          </div>
+          <div className="text-slate-300 space-y-0.5 font-mono text-[11px]">
+            <div><strong>Facility:</strong> {hotspot.facility_name || 'Registered Industrial Complex'}</div>
+            <div><strong>Current FRP:</strong> <span className="text-red-400 font-bold">{hotspot.frp} MW</span></div>
+            <div><strong>Normal Baseline:</strong> {hotspot.baseline_mean_frp || '27.7'} MW</div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Large Forest Fire Alert Banner */}
       {hotspot.large_forest_fire && (
         <div className="bg-rose-500/15 border border-rose-500/40 rounded-lg p-2 flex items-center gap-2 text-xs text-rose-600 dark:text-rose-400 font-bold">
           <AlertOctagon className="w-4 h-4 text-rose-500 animate-pulse flex-shrink-0" />
@@ -198,7 +228,7 @@ export function HotspotCard({
         </div>
       )}
 
-      {/* 3. Telemetry Grid Card */}
+      {/* 4. Telemetry Grid (Radiance FRP, Brightness Temp, Status, Data Source) */}
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div className="bg-slate-50 dark:bg-dark-900/80 border border-slate-200 dark:border-slate-800/60 rounded-lg p-2">
           <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Radiance (FRP)</span>
@@ -211,7 +241,7 @@ export function HotspotCard({
           </span>
         </div>
         <div className="bg-slate-50 dark:bg-dark-900/80 border border-slate-200 dark:border-slate-800/60 rounded-lg p-2">
-          <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Fire Status</span>
+          <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Fire Status / Persistence</span>
           <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 font-mono">
             {hotspot.fire_status || (hotspot.active_days ? `${hotspot.active_days} observation day(s)` : 'Active Pass')}
           </span>
@@ -224,7 +254,7 @@ export function HotspotCard({
         </div>
       </div>
 
-      {/* 4. Forest Context / Land Attribution Card */}
+      {/* 5. Forest Context / Land Attribution Card */}
       <div className="bg-slate-50 dark:bg-dark-900/80 border border-slate-200 dark:border-slate-800/60 rounded-lg p-2.5 text-xs space-y-1">
         <div className="flex justify-between">
           <span className="text-slate-500 dark:text-slate-400">Context / Eco-Zone:</span>
@@ -247,7 +277,7 @@ export function HotspotCard({
         </div>
       </div>
 
-      {/* 5. Emergency First-Responder Route Card (Always available on every hotspot like before) */}
+      {/* 6. Emergency Dispatch Route (Always available on all hotspots) */}
       <div className="bg-slate-100 dark:bg-dark-900/90 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1">
@@ -307,39 +337,33 @@ export function HotspotCard({
         {routeError && <p className="text-[11px] text-red-500 dark:text-red-400">{routeError}</p>}
       </div>
 
-      {/* 6. Contextual Emergency Response & Nearby Resources (Shown for dangerous events) */}
-      {isDangerousEvent && (
+      {/* 7. [RESPOND] Action Button (Shown for High-Risk / Critical / Wildfire events) */}
+      {canRespond && (
         <div className="border-t border-slate-200 dark:border-slate-800 pt-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider flex items-center gap-1.5">
-              <ShieldAlert className="w-3.5 h-3.5 text-red-500" />
-              <span>Nearby Emergency Resources</span>
-            </span>
-            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40">
-              DEMO SAFETY DATA
-            </span>
-          </div>
-
-          {/* Collapsible Trigger Button: CLOSED by default */}
           <button
             type="button"
             onClick={() => {
-              const nextState = !isOpenResources;
-              setIsOpenResources(nextState);
+              const nextState = !isOpenRespond;
+              setIsOpenRespond(nextState);
               if (nextState && !triageData && !loadingTriage) {
                 loadTriageData();
               }
             }}
-            className="w-full py-1.5 px-3 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-dark-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-xs font-semibold flex items-center justify-between text-slate-800 dark:text-slate-200 transition-colors"
+            className={`w-full py-2 px-3 rounded-xl font-extrabold text-xs flex items-center justify-center gap-2 shadow-md transition-all ${
+              isOpenRespond
+                ? 'bg-slate-800 text-slate-200 hover:bg-slate-700 dark:bg-slate-700 dark:text-white'
+                : 'bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white shadow-red-600/30'
+            }`}
           >
-            <span>Inspect Nearby Facilities</span>
-            <span className="text-slate-400 font-mono text-[10px] flex items-center gap-1">
-              {isOpenResources ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            <ShieldAlert className="w-4 h-4" />
+            <span>{isOpenRespond ? 'Close Emergency Response' : 'RESPOND (Nearby Safety Resources)'}</span>
+            <span className="ml-1 text-[10px] opacity-75">
+              {isOpenRespond ? '▲' : '▼'}
             </span>
           </button>
 
-          {/* Expanded Resource Cards */}
-          {isOpenResources && (
+          {/* Emergency Response Expanded Section */}
+          {isOpenRespond && (
             <div className="bg-slate-50 dark:bg-dark-900/90 border border-slate-200 dark:border-slate-800 rounded-xl p-3 space-y-3 text-xs animate-fadeIn">
               {loadingTriage ? (
                 <div className="py-4 text-center text-slate-400">
@@ -372,7 +396,7 @@ export function HotspotCard({
                     </button>
                   </div>
 
-                  {/* Individual Resource Cards */}
+                  {/* Resource Cards */}
                   <div className="space-y-2">
                     {getResourceList().map(({ key, label }) => {
                       const res = nearest[key];
@@ -461,7 +485,7 @@ export function HotspotCard({
                     )}
                   </div>
 
-                  {/* SOP Protocol Card */}
+                  {/* Official Safety Guidance (SOP) */}
                   {sop.title && (
                     <div className="bg-sky-50 dark:bg-dark-850 rounded-lg p-2.5 border border-sky-200 dark:border-sky-950 text-[10.5px] text-slate-700 dark:text-slate-300 space-y-1">
                       <strong className="text-sky-700 dark:text-sky-400 block font-semibold">
@@ -473,9 +497,9 @@ export function HotspotCard({
                     </div>
                   )}
 
-                  {/* Dossier Download Action */}
+                  {/* Dossier Action */}
                   <div className="pt-1 flex justify-between items-center border-t border-slate-200 dark:border-slate-800 text-[10px]">
-                    <span className="text-slate-400">Authority: NDMA / FSI</span>
+                    <span className="text-slate-400">DEMO SAFETY DATA (NDMA / FSI)</span>
                     <a
                       href={getDossierDownloadUrl(hotspot.id || 'jamnagar-refinery', 'demo')}
                       target="_blank"
@@ -493,7 +517,7 @@ export function HotspotCard({
         </div>
       )}
 
-      {/* 7. Why Classified? Decision Reasoning Card */}
+      {/* 8. Why Classified? Decision Reasoning Card */}
       <div className="bg-sky-50 dark:bg-slate-900/90 border border-sky-200 dark:border-sky-950/80 rounded-lg p-3 space-y-1.5">
         <div className="flex items-center gap-1 text-[11px] font-bold text-sky-700 dark:text-sky-400 uppercase tracking-wider">
           <CheckCircle2 className="w-3.5 h-3.5" />

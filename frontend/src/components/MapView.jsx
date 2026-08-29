@@ -315,7 +315,8 @@ export function MapView({
             <strong>Normal Baseline:</strong> ${alt.baseline_mean_frp} MW<br/>
             <p style="margin-top:4px; font-size:11px; color:#fca5a5;">${alt.recommendation}</p>
           </div>
-        `);
+        `)
+        .on('click', () => onSelectHotspot && onSelectHotspot(alt));
 
       alertsLayerRef.current.push(alertMarker);
     });
