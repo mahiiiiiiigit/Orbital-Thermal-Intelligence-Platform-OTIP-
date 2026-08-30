@@ -2,19 +2,17 @@ import React, { useState, useEffect } from 'react';
 import {
   ShieldAlert,
   AlertTriangle,
-  MapPin,
-  Calendar,
-  Layers,
+  Clock,
   FileText,
   X,
   Navigation,
   Activity,
   Flame,
-  PhoneCall,
   Eye,
   EyeOff,
   Building2,
-  Clock,
+  Home,
+  CheckCircle2,
 } from 'lucide-react';
 import { fetchEmergencyRoute, fetchNearestSafetyResources, getDossierDownloadUrl } from '../services/api';
 import { TAXONOMY_COLORS } from '../constants/taxonomy';
@@ -45,7 +43,9 @@ export function EventInvestigationModal({
     fetchNearestSafetyResources({
       lat,
       lon,
-      event_type: event.classification || 'GENERIC',
+      classification: event.classification || 'UNCLASSIFIED',
+      frp: event.peak_frp || event.frp || 25.0,
+      riskScore: event.risk_score || 50.0,
     })
       .then((data) => {
         if (isMounted) {
@@ -61,7 +61,7 @@ export function EventInvestigationModal({
     return () => {
       isMounted = false;
     };
-  }, [lat, lon, event?.classification]);
+  }, [lat, lon, event?.classification, event?.peak_frp, event?.frp, event?.risk_score]);
 
   if (!event) return null;
 
@@ -73,18 +73,18 @@ export function EventInvestigationModal({
 
   const eventTitle = event.facility_name || event.forest_name || event.cluster_id || 'Thermal Anomaly Target';
   const dossierUrl = getDossierDownloadUrl(event.cluster_id || event.id || `${lat},${lon}`, mode);
-  const nearest = triageData?.nearest || {};
+  const nearest = triageData?.nearest_resources || triageData?.nearest || {};
+  const sop = triageData?.recommended_response || {};
 
-  const handleCalculateRoute = async () => {
-    if (routeData) {
-      setRouteData(null);
-      if (onSetRoute) onSetRoute(null);
-      return;
-    }
+  const handleRouteToDepot = async (depot) => {
+    if (!depot) return;
     setLoadingRoute(true);
     setRouteError(null);
     try {
-      const data = await fetchEmergencyRoute(lat, lon);
+      const data = await fetchEmergencyRoute(lat, lon, depot.latitude, depot.longitude);
+      if (data && data.origin_depot) {
+        data.origin_depot.name = depot.name;
+      }
       setRouteData(data);
       if (onSetRoute) onSetRoute(data);
     } catch (err) {
@@ -276,6 +276,27 @@ export function EventInvestigationModal({
                 </div>
               </div>
             </div>
+
+            {/* Official Safety Guidance SOP */}
+            {sop.title && (
+              <div className="bg-dark-850 border border-dark-700 rounded-xl p-4 space-y-2">
+                <div className="flex items-center gap-2 text-xs font-bold text-sky-400 uppercase tracking-wider">
+                  <CheckCircle2 className="w-4 h-4 text-sky-400" />
+                  <span>Official Response Guidance (NDMA / FSI SOP)</span>
+                </div>
+                <div className="text-xs text-slate-300 pt-1 space-y-1">
+                  <div className="font-bold text-slate-100">{sop.title}</div>
+                  <ul className="space-y-1 text-slate-400 pt-1">
+                    {sop.actions && sop.actions.map((act, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="text-emerald-400 font-bold">✓</span>
+                        <span>{act}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right Column: Safety Infrastructure & Response Options (5 Cols) */}
@@ -285,7 +306,7 @@ export function EventInvestigationModal({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs font-bold text-slate-300 uppercase tracking-wider">
                   <Building2 className="w-4 h-4 text-emerald-400" />
-                  <span>Emergency Depots</span>
+                  <span>Nearest Safety Depots</span>
                 </div>
                 <button
                   type="button"
@@ -312,77 +333,135 @@ export function EventInvestigationModal({
                 </div>
               ) : (
                 <div className="space-y-2 text-xs">
+                  {/* 1. Fire Station */}
                   {nearest.fire_station ? (
-                    <div className="bg-dark-900/80 border border-dark-750 rounded-lg p-2.5 flex justify-between items-center">
-                      <div>
-                        <span className="font-semibold text-slate-200 block text-xs">
+                    <div className="bg-dark-900 border border-dark-750 rounded-lg p-2.5 space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold text-slate-200 text-xs">
                           {nearest.fire_station.name}
                         </span>
-                        <span className="text-[10px] text-slate-400">
-                          Fire & Rescue Depot • {nearest.fire_station.distance_km} km
+                        <span className="font-mono text-sky-400 font-bold text-xs">
+                          {nearest.fire_station.distance_km} km
                         </span>
                       </div>
-                      <span className="font-mono text-emerald-400 font-bold text-xs">~6 min</span>
+                      <div className="flex justify-between items-center text-[10px] text-slate-400 pt-1 border-t border-dark-750">
+                        <span>ETA: <strong className="text-emerald-400 font-mono">~{nearest.fire_station.estimated_travel_time_mins || 6} min</strong></span>
+                        <button
+                          type="button"
+                          onClick={() => handleRouteToDepot(nearest.fire_station)}
+                          disabled={loadingRoute}
+                          className="px-2 py-0.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold flex items-center gap-1 transition-colors"
+                        >
+                          <Navigation className="w-2.5 h-2.5" />
+                          <span>Route</span>
+                        </button>
+                      </div>
                     </div>
                   ) : null}
 
+                  {/* 2. Hospital / Trauma Care */}
                   {nearest.hospital ? (
-                    <div className="bg-dark-900/80 border border-dark-750 rounded-lg p-2.5 flex justify-between items-center">
-                      <div>
-                        <span className="font-semibold text-slate-200 block text-xs">
+                    <div className="bg-dark-900 border border-dark-750 rounded-lg p-2.5 space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold text-slate-200 text-xs">
                           {nearest.hospital.name}
                         </span>
-                        <span className="text-[10px] text-slate-400">
-                          Trauma Center • {nearest.hospital.distance_km} km
+                        <span className="font-mono text-sky-400 font-bold text-xs">
+                          {nearest.hospital.distance_km} km
                         </span>
                       </div>
-                      <span className="font-mono text-emerald-400 font-bold text-xs">~10 min</span>
+                      <div className="flex justify-between items-center text-[10px] text-slate-400 pt-1 border-t border-dark-750">
+                        <span>ETA: <strong className="text-emerald-400 font-mono">~{nearest.hospital.estimated_travel_time_mins || 10} min</strong></span>
+                        <button
+                          type="button"
+                          onClick={() => handleRouteToDepot(nearest.hospital)}
+                          disabled={loadingRoute}
+                          className="px-2 py-0.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold flex items-center gap-1 transition-colors"
+                        >
+                          <Navigation className="w-2.5 h-2.5" />
+                          <span>Route</span>
+                        </button>
+                      </div>
                     </div>
                   ) : null}
 
+                  {/* 3. Police Station */}
                   {nearest.police ? (
-                    <div className="bg-dark-900/80 border border-dark-750 rounded-lg p-2.5 flex justify-between items-center">
-                      <div>
-                        <span className="font-semibold text-slate-200 block text-xs">
+                    <div className="bg-dark-900 border border-dark-750 rounded-lg p-2.5 space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold text-slate-200 text-xs">
                           {nearest.police.name}
                         </span>
-                        <span className="text-[10px] text-slate-400">
-                          Police Division • {nearest.police.distance_km} km
+                        <span className="font-mono text-sky-400 font-bold text-xs">
+                          {nearest.police.distance_km} km
                         </span>
                       </div>
-                      <span className="font-mono text-emerald-400 font-bold text-xs">~8 min</span>
+                      <div className="flex justify-between items-center text-[10px] text-slate-400 pt-1 border-t border-dark-750">
+                        <span>ETA: <strong className="text-emerald-400 font-mono">~{nearest.police.estimated_travel_time_mins || 8} min</strong></span>
+                        <button
+                          type="button"
+                          onClick={() => handleRouteToDepot(nearest.police)}
+                          disabled={loadingRoute}
+                          className="px-2 py-0.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold flex items-center gap-1 transition-colors"
+                        >
+                          <Navigation className="w-2.5 h-2.5" />
+                          <span>Route</span>
+                        </button>
+                      </div>
                     </div>
                   ) : null}
+
+                  {/* 4. Evacuation / Safe Shelter */}
+                  <div className="bg-dark-900 border border-dark-750 rounded-lg p-2.5 space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold text-slate-200 text-xs flex items-center gap-1">
+                        <Home className="w-3.5 h-3.5 text-amber-400" />
+                        <span>{nearest.shelter ? nearest.shelter.name : 'Designated Safe Shelter'}</span>
+                      </span>
+                      {nearest.shelter && (
+                        <span className="font-mono text-sky-400 font-bold text-xs">
+                          {nearest.shelter.distance_km} km
+                        </span>
+                      )}
+                    </div>
+                    {nearest.shelter ? (
+                      <div className="flex justify-between items-center text-[10px] text-slate-400 pt-1 border-t border-dark-750">
+                        <span>ETA: <strong className="text-emerald-400 font-mono">~{nearest.shelter.estimated_travel_time_mins || 12} min</strong></span>
+                        <button
+                          type="button"
+                          onClick={() => handleRouteToDepot(nearest.shelter)}
+                          disabled={loadingRoute}
+                          className="px-2 py-0.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold flex items-center gap-1 transition-colors"
+                        >
+                          <Navigation className="w-2.5 h-2.5" />
+                          <span>Route</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-[10.5px] text-slate-500 italic pt-1 border-t border-dark-750">
+                        No verified evacuation point available for this location.
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
 
-              {/* Emergency Dispatch Action */}
-              <div className="pt-2 border-t border-dark-700/80">
-                <button
-                  type="button"
-                  onClick={handleCalculateRoute}
-                  disabled={loadingRoute}
-                  className={`w-full py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-                    routeData
-                      ? 'bg-rose-600 hover:bg-rose-500 text-white'
-                      : 'bg-sky-600 hover:bg-sky-500 text-white shadow-md'
-                  }`}
-                >
-                  {loadingRoute ? (
-                    <span>Calculating road route...</span>
-                  ) : routeData ? (
-                    <>
-                      <X className="w-3.5 h-3.5" />
-                      <span>Clear Route ({routeData.route?.distance_km} km / {routeData.route?.duration_min} min)</span>
-                    </>
-                  ) : (
-                    <>
-                      <Navigation className="w-3.5 h-3.5" />
-                      <span>Calculate First-Responder Route</span>
-                    </>
-                  )}
-                </button>
-              </div>
+              {/* Active Route Status if calculated */}
+              {routeData && (
+                <div className="pt-2 border-t border-dark-700/80">
+                  <div className="bg-dark-900 border border-amber-500/40 rounded-lg p-2.5 flex justify-between items-center text-xs">
+                    <div>
+                      <span className="text-[10px] text-amber-400 uppercase font-bold block">Active Dispatch Route</span>
+                      <span className="text-slate-200 font-medium">
+                        {routeData.origin_depot?.name} → Incident
+                      </span>
+                    </div>
+                    <span className="font-mono text-emerald-400 font-bold">
+                      {routeData.route?.distance_km} km / {routeData.route?.duration_minutes} min
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
