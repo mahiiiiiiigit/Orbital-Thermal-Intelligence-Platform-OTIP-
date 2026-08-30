@@ -12,7 +12,6 @@ import {
   fetchFsiFfdrGrid,
 } from './services/api';
 import { REGIONS } from './constants/taxonomy';
-import { AlertTriangle, Trees } from 'lucide-react';
 import { FacilityFingerprintModal } from './components/FacilityFingerprintModal';
 
 export function App() {
@@ -34,7 +33,7 @@ export function App() {
   const [alerts, setAlerts] = useState([]);
   const [ffdrGrid, setFfdrGrid] = useState(null);
 
-  // Temporary Safety Resources (Only displayed when analyst clicks "Show on Map" for an active incident)
+  // Temporary Safety Resources
   const [temporarySafetyResources, setTemporarySafetyResources] = useState([]);
 
   const [timelineIndex, setTimelineIndex] = useState(0);
@@ -92,7 +91,7 @@ export function App() {
 
     try {
       if (dataSource === 'fsi') {
-        // Load FSI Forest Fire Intelligence (Demo / Fallback Layer)
+        // Load FSI Forest Fire Intelligence
         const fsiRes = await fetchFsiForestFires({ mode: 'demo' });
         const raw = fsiRes.hotspots || [];
         const sorted = raw.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
@@ -108,7 +107,7 @@ export function App() {
         setSelectedHotspot(null);
         setSelectedCluster(null);
       } else {
-        // Load NASA FIRMS Stream (Live or Demo as toggled)
+        // Load NASA FIRMS Stream
         const [hotspotRes, clusterRes, alertRes] = await Promise.all([
           fetchHotspots({
             mode,
@@ -133,12 +132,7 @@ export function App() {
           setTimelineIndex(sorted.length - 1);
         }
         setSelectedHotspot(null);
-
-        if (clusterRes.clusters && clusterRes.clusters.length > 0) {
-          setSelectedCluster(clusterRes.clusters[0]);
-        } else {
-          setSelectedCluster(null);
-        }
+        setSelectedCluster(null);
       }
     } catch (err) {
       console.error('Failed to load telemetry:', err);
@@ -187,8 +181,8 @@ export function App() {
   }, [allHotspots, clusters, alerts]);
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-slate-50 dark:bg-dark-900 overflow-hidden text-slate-900 dark:text-slate-100 transition-colors duration-200">
-      {/* Top Navigation Bar */}
+    <div className="flex flex-col h-screen w-screen bg-dark-900 overflow-hidden text-slate-100 transition-colors duration-200">
+      {/* Top Operations Navigation Bar */}
       <Navbar
         mode={mode}
         onToggleMode={(newMode) => setMode(newMode)}
@@ -209,29 +203,21 @@ export function App() {
 
       {/* Main Workspace Layout */}
       <div className="flex flex-1 overflow-hidden relative">
-        {/* Left Analytics Command Center */}
+        {/* Left Analytics Overview Sidebar */}
         <Sidebar
           hotspots={allHotspots}
           clusters={clusters}
           alerts={alerts}
-          selectedHotspot={selectedHotspot}
-          selectedCluster={selectedCluster}
-          activeRoute={activeRoute}
-          onSetRoute={setActiveRoute}
-          onShowTemporaryResources={setTemporarySafetyResources}
-          showingTemporaryResources={temporarySafetyResources.length > 0}
-          mode={mode}
           notice={notice}
           filterClass={filterClass}
           onSelectFilterClass={setFilterClass}
           activeDate={activeDate}
           stats={stats}
-          onViewFingerprint={(facility) => setSelectedFingerprintFacility(facility)}
         />
 
-        {/* Center / Main GIS Map Area */}
-        <main className="flex-1 relative h-full w-full bg-slate-200 dark:bg-dark-950 overflow-hidden transition-colors duration-200">
-          {/* Leaflet Map */}
+        {/* Center / Dominant GIS Map Area */}
+        <main className="flex-1 relative h-full w-full bg-dark-950 overflow-hidden transition-colors duration-200">
+          {/* Leaflet Map with Working Smart Map-Anchored Popups */}
           <MapView
             hotspots={visibleHotspots}
             clusters={clusters}
@@ -260,32 +246,14 @@ export function App() {
             />
           )}
 
-          {/* Floating FSI Demo Data Banner */}
-          {dataSource === 'fsi' && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-amber-500/95 text-slate-950 font-bold text-xs py-1.5 px-4 rounded-xl shadow-2xl border border-amber-300 backdrop-blur-md flex items-center gap-2">
-              <Trees className="w-4 h-4 text-slate-950" />
-              <span>DEMO DATA — Simulated Forest Survey of India (FSI) Wildfire Intelligence</span>
-            </div>
-          )}
-
-          {/* Floating Emergency Alert Banner (for Critical Spikes) */}
-          {alerts.length > 0 && dataSource !== 'fsi' && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-red-600/95 text-white font-bold text-xs py-2 px-4 rounded-xl shadow-2xl border border-red-400/50 backdrop-blur-md flex items-center gap-2 animate-bounce">
-              <AlertTriangle className="w-4 h-4 text-white" />
-              <span>
-                CRITICAL ALERT: {alerts[0].facility_name} — {alerts[0].current_frp} MW Radiance (Z-Score: +{alerts[0].z_score}σ)
-              </span>
-            </div>
-          )}
-
-          {/* Floating Intensity Legend (Thermal, Hybrid & Forest Risk modes) */}
+          {/* Floating Intensity Legend (Bottom Right) */}
           {mapMode !== 'standard' && (
             <div className="absolute bottom-6 right-6 z-[1000]">
               <ThermalLegend mode={mapMode} />
             </div>
           )}
 
-          {/* Floating Timeline Scrubbing Controls */}
+          {/* Floating Timeline Scrubbing Controls (Bottom Center) */}
           {timelineDates.length > 1 && (
             <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000]">
               <TimelineSlider

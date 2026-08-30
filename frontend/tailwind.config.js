@@ -9,23 +9,25 @@ export default {
     extend: {
       colors: {
         dark: {
-          900: '#070d19',
-          850: '#0b1324',
-          800: '#101a33',
-          750: '#172445',
-          700: '#1e2f57',
-          600: '#2d4378',
+          950: '#0c1119',
+          900: '#111722', // Main operations console charcoal/navy background
+          850: '#161f2e', // Card and panel surface
+          800: '#1c273a', // Elevated surface & dropdowns
+          750: '#233148', // Active/hover surface
+          700: '#2a3b56', // Low-contrast subtle borders
+          600: '#3a4f72', // Dividers & secondary outlines
         },
         accent: {
           blue: '#38bdf8',
           cyan: '#06b6d4',
-          green: '#22c55e',
+          teal: '#14b8a6',
+          green: '#10b981',
           amber: '#f59e0b',
-          yellow: '#facc15',
+          yellow: '#eab308',
           orange: '#f97316',
           red: '#ef4444',
           purple: '#8b5cf6',
-          pink: '#ec4899',
+          slate: '#64748b',
         }
       },
       fontFamily: {
