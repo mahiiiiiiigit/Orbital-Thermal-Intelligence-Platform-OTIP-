@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Activity, FileText, Compass, AlertTriangle } from 'lucide-react';
+import { X, Activity, FileText, ShieldAlert, AlertTriangle } from 'lucide-react';
 import { TAXONOMY_COLORS } from '../constants/taxonomy';
 import { getDossierDownloadUrl } from '../services/api';
 
@@ -7,6 +7,7 @@ export function ClusterCard({
   cluster,
   onClose,
   onViewFingerprint,
+  onInvestigateEvent,
 }) {
   if (!cluster) return null;
 
@@ -14,8 +15,15 @@ export function ClusterCard({
   const riskScore = cluster.risk_score != null ? cluster.risk_score : 78;
   const riskLevel = cluster.risk_level ? String(cluster.risk_level).toUpperCase() : (riskScore >= 70 ? 'HIGH' : (riskScore >= 40 ? 'MEDIUM' : 'LOW'));
   const isAbnormal = cluster.is_anomaly || (cluster.classification === 'INDUSTRIAL_FIRE') || riskScore >= 70;
-  const facilityIdentifier = cluster.facility_name || cluster.cluster_id || `${cluster.latitude?.toFixed(2)},${cluster.longitude?.toFixed(2)}`;
 
+  // Facility attribution check
+  const hasFacilityAttribution = Boolean(
+    cluster.facility_name &&
+    !cluster.facility_name.toLowerCase().includes('unknown') &&
+    !cluster.facility_name.toLowerCase().includes('unregistered')
+  );
+
+  const facilityIdentifier = cluster.facility_name || cluster.cluster_id || `${cluster.latitude?.toFixed(2)},${cluster.longitude?.toFixed(2)}`;
   const dossierUrl = getDossierDownloadUrl(cluster.cluster_id || 'jamnagar-refinery', 'demo');
 
   // "Why This Cluster Matters" bullet points
@@ -24,7 +32,7 @@ export function ClusterCard({
     : [
         `Repeated thermal detections (${cluster.detection_count || 24} events) in the same geographic area`,
         `Active across multiple observation days (${cluster.active_days ? `${cluster.active_days} / 30` : '18 / 30 days'})`,
-        `Thermal intensity (${cluster.peak_frp || cluster.avg_frp || 45} MW) significantly above background ambient`,
+        `Thermal intensity (${cluster.peak_frp || cluster.mean_frp || 45} MW) significantly above background ambient`,
         `Associated with identified infrastructure: ${cluster.facility_name || 'Industrial Facility'}`,
       ];
 
@@ -155,28 +163,44 @@ export function ClusterCard({
         </ul>
       </div>
 
-      {/* 3 Actions: [View Thermal Fingerprint], [Investigate], [Generate Dossier] */}
+      {/* 3 Actions: [View Thermal Fingerprint], [Investigate Event], [Generate Dossier] */}
       <div className="pt-2 border-t border-dark-700/80 flex flex-col gap-1.5">
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => onViewFingerprint && onViewFingerprint(facilityIdentifier)}
-            className="flex-1 py-1.5 px-2 bg-sky-600 hover:bg-sky-500 text-white text-[11px] font-bold rounded-lg shadow-sm transition-all flex items-center justify-center gap-1.5"
-          >
-            <Activity className="w-3.5 h-3.5" />
-            <span>View Thermal Fingerprint</span>
-          </button>
+          {/* Action 1: View Thermal Fingerprint (FACILITY-CENTRIC) */}
+          {hasFacilityAttribution ? (
+            <button
+              type="button"
+              onClick={() => onViewFingerprint && onViewFingerprint(facilityIdentifier)}
+              className="flex-1 py-1.5 px-2 bg-sky-600 hover:bg-sky-500 text-white text-[11px] font-bold rounded-lg shadow-sm transition-all flex items-center justify-center gap-1.5"
+              title="View 30-day baseline thermal profile for this facility"
+            >
+              <Activity className="w-3.5 h-3.5" />
+              <span>View Thermal Fingerprint</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="flex-1 py-1.5 px-2 bg-dark-800 border border-dark-700 text-slate-500 text-[10px] font-semibold rounded-lg cursor-not-allowed text-center"
+              title="Facility attribution required for thermal fingerprint"
+            >
+              No Facility Attribution
+            </button>
+          )}
 
+          {/* Action 2: Investigate Event (EVENT-CENTRIC) */}
           <button
             type="button"
-            onClick={() => onViewFingerprint && onViewFingerprint(facilityIdentifier)}
-            className="py-1.5 px-3 bg-dark-800 hover:bg-dark-750 border border-dark-700 text-slate-200 text-[11px] font-semibold rounded-lg transition-colors flex items-center justify-center gap-1"
+            onClick={() => onInvestigateEvent && onInvestigateEvent(cluster)}
+            className="py-1.5 px-3 bg-dark-800 hover:bg-dark-750 border border-dark-700 text-slate-200 hover:text-white text-[11px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1 shadow-sm"
+            title="Investigate this cluster as an active incident"
           >
-            <Compass className="w-3.5 h-3.5 text-sky-400" />
-            <span>Investigate</span>
+            <ShieldAlert className="w-3.5 h-3.5 text-orange-400" />
+            <span>Investigate Event</span>
           </button>
         </div>
 
+        {/* Action 3: Generate Dossier */}
         <a
           href={dossierUrl}
           target="_blank"

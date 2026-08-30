@@ -13,6 +13,7 @@ import {
 } from './services/api';
 import { REGIONS } from './constants/taxonomy';
 import { FacilityFingerprintModal } from './components/FacilityFingerprintModal';
+import { EventInvestigationModal } from './components/EventInvestigationModal';
 
 export function App() {
   const [dataSource, setDataSource] = useState('firms'); // 'firms' | 'fsi'
@@ -42,6 +43,7 @@ export function App() {
   const [selectedCluster, setSelectedCluster] = useState(null);
   const [activeRoute, setActiveRoute] = useState(null);
   const [selectedFingerprintFacility, setSelectedFingerprintFacility] = useState(null);
+  const [selectedInvestigationEvent, setSelectedInvestigationEvent] = useState(null);
 
   // Sync theme with document element
   useEffect(() => {
@@ -236,14 +238,27 @@ export function App() {
             onShowTemporaryResources={setTemporarySafetyResources}
             showingTemporaryResources={temporarySafetyResources.length > 0}
             onViewFingerprint={(facility) => setSelectedFingerprintFacility(facility)}
+            onInvestigateEvent={(event) => setSelectedInvestigationEvent(event)}
           />
 
-          {/* Facility Thermal Fingerprint Modal Dialog */}
+          {/* Facility Thermal Fingerprint Modal Dialog (FACILITY-CENTRIC) */}
           {selectedFingerprintFacility && (
             <FacilityFingerprintModal
               facilityIdentifier={selectedFingerprintFacility}
               mode={mode}
               onClose={() => setSelectedFingerprintFacility(null)}
+            />
+          )}
+
+          {/* Incident Investigation Modal Dialog (EVENT-CENTRIC) */}
+          {selectedInvestigationEvent && (
+            <EventInvestigationModal
+              event={selectedInvestigationEvent}
+              mode={mode}
+              onClose={() => setSelectedInvestigationEvent(null)}
+              onSetRoute={setActiveRoute}
+              onShowTemporaryResources={setTemporarySafetyResources}
+              showingTemporaryResources={temporarySafetyResources.length > 0}
             />
           )}
 

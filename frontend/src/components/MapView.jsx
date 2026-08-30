@@ -37,6 +37,7 @@ export function MapView({
   onShowTemporaryResources,
   showingTemporaryResources = false,
   onViewFingerprint,
+  onInvestigateEvent,
 }) {
   const mapContainerRef = useRef(null);
   const cardRef = useRef(null);
@@ -621,12 +622,14 @@ export function MapView({
               showingTemporaryResources={showingTemporaryResources}
               onClose={() => onSelectHotspot && onSelectHotspot(null)}
               onViewFingerprint={onViewFingerprint}
+              onInvestigateEvent={onInvestigateEvent}
             />
           ) : selectedCluster ? (
             <ClusterCard
               cluster={selectedCluster}
               onClose={() => onSelectCluster && onSelectCluster(null)}
               onViewFingerprint={onViewFingerprint}
+              onInvestigateEvent={onInvestigateEvent}
             />
           ) : null}
         </div>
