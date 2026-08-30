@@ -1,5 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
-import ReactDOM from 'react-dom';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -38,6 +37,7 @@ export function MapView({
   onViewFingerprint,
 }) {
   const mapContainerRef = useRef(null);
+  const cardRef = useRef(null);
   const [map, setMap] = useState(null);
   const baseTileLayerRef = useRef(null);
   const markersLayerRef = useRef([]);
@@ -48,9 +48,8 @@ export function MapView({
   const ffdrLayerRef = useRef(null);
   const heatLayerRef = useRef(null);
 
-  // Dynamic Map Anchored Popup Container
-  const popupRef = useRef(null);
-  const [popupContainer, setPopupContainer] = useState(null);
+  // Dynamic Map-Anchored Overlay Position State
+  const [popupPos, setPopupPos] = useState(null);
 
   // 1. Initialize Leaflet Map Instance
   useEffect(() => {
@@ -142,47 +141,129 @@ export function MapView({
     });
   }, [map, regionConfig, activeRoute, selectedHotspot]);
 
-  // 4. Manage Selected Hotspot Map-Anchored Popup
-  useEffect(() => {
-    if (!map) return;
-
-    if (selectedHotspot && selectedHotspot.latitude != null && selectedHotspot.longitude != null) {
-      if (popupRef.current) {
-        map.closePopup(popupRef.current);
-        popupRef.current = null;
-      }
-
-      const div = document.createElement('div');
-      div.className = 'hotspot-map-card-wrapper';
-
-      const popup = L.popup({
-        offset: [0, -10],
-        className: 'custom-map-anchored-popup',
-        autoPan: true,
-        autoPanPadding: [50, 50],
-        closeButton: false,
-        maxWidth: 380,
-        minWidth: 320,
-      })
-        .setLatLng([selectedHotspot.latitude, selectedHotspot.longitude])
-        .setContent(div)
-        .openOn(map);
-
-      popupRef.current = popup;
-      setPopupContainer(div);
-
-      popup.on('remove', () => {
-        setPopupContainer(null);
-        popupRef.current = null;
-      });
-    } else {
-      if (popupRef.current) {
-        map.closePopup(popupRef.current);
-        popupRef.current = null;
-      }
-      setPopupContainer(null);
+  // 4. Compute Smart Map-Anchored Popup Position (Zero-Clipping Calculation)
+  const updatePopupPosition = useCallback(() => {
+    if (!map || !selectedHotspot || selectedHotspot.latitude == null || selectedHotspot.longitude == null) {
+      setPopupPos(null);
+      return;
     }
+
+    const container = mapContainerRef.current;
+    if (!container) return;
+
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+    const point = map.latLngToContainerPoint([selectedHotspot.latitude, selectedHotspot.longitude]);
+
+    const cardEl = cardRef.current;
+    const cardWidth = cardEl ? cardEl.offsetWidth : 370;
+    const cardHeight = cardEl ? cardEl.offsetHeight : 440;
+
+    const MARGIN = 16;
+    const PIN_OFFSET = 12;
+
+    // Available space in viewport
+    const spaceAbove = point.y - MARGIN;
+    const spaceBelow = containerHeight - point.y - MARGIN;
+
+    // Decision: Place below if insufficient space above AND more space below
+    let isAbove = true;
+    if (spaceAbove < (cardHeight + PIN_OFFSET) && spaceBelow >= spaceAbove) {
+      isAbove = false;
+    }
+
+    // Calculate vertical position
+    let targetTop = isAbove
+      ? (point.y - cardHeight - PIN_OFFSET)
+      : (point.y + PIN_OFFSET);
+
+    // Hard clamp top within [MARGIN, containerHeight - cardHeight - MARGIN]
+    const maxTop = Math.max(MARGIN, containerHeight - cardHeight - MARGIN);
+    const top = Math.max(MARGIN, Math.min(targetTop, maxTop));
+
+    // Calculate horizontal position centered on marker
+    let targetLeft = point.x - cardWidth / 2;
+    // Hard clamp left within [MARGIN, containerWidth - cardWidth - MARGIN]
+    const maxLeft = Math.max(MARGIN, containerWidth - cardWidth - MARGIN);
+    const left = Math.max(MARGIN, Math.min(targetLeft, maxLeft));
+
+    // Pointer arrow horizontal anchor relative to card
+    const arrowLeft = Math.max(20, Math.min(point.x - left, cardWidth - 20));
+
+    // Marker visibility check
+    const isVisible = (
+      point.x >= -cardWidth &&
+      point.x <= containerWidth + cardWidth &&
+      point.y >= -cardHeight &&
+      point.y <= containerHeight + cardHeight
+    );
+
+    setPopupPos({
+      left,
+      top,
+      isAbove,
+      arrowLeft,
+      markerX: point.x,
+      markerY: point.y,
+      isVisible,
+    });
   }, [map, selectedHotspot]);
+
+  // Sync Popup Position on selection change and auto-pan if marker is near edge
+  useEffect(() => {
+    if (!map || !selectedHotspot) {
+      setPopupPos(null);
+      return;
+    }
+
+    updatePopupPosition();
+
+    // Auto-pan slightly if marker is too close to container boundary
+    const container = mapContainerRef.current;
+    if (container) {
+      const pt = map.latLngToContainerPoint([selectedHotspot.latitude, selectedHotspot.longitude]);
+      const padTop = 130;
+      const padBottom = 130;
+      const padSide = 150;
+      let dx = 0;
+      let dy = 0;
+
+      if (pt.x < padSide) dx = pt.x - padSide;
+      else if (pt.x > container.clientWidth - padSide) dx = pt.x - (container.clientWidth - padSide);
+
+      if (pt.y < padTop) dy = pt.y - padTop;
+      else if (pt.y > container.clientHeight - padBottom) dy = pt.y - (container.clientHeight - padBottom);
+
+      if (Math.abs(dx) > 12 || Math.abs(dy) > 12) {
+        map.panBy([dx, dy], { animate: true, duration: 0.35 });
+      }
+    }
+  }, [map, selectedHotspot, updatePopupPosition]);
+
+  // Keep Popup position updated during map movement / zoom / resize
+  useEffect(() => {
+    if (!map || !selectedHotspot) return;
+
+    const handleMapMovement = () => {
+      updatePopupPosition();
+    };
+
+    map.on('move zoom viewreset resize', handleMapMovement);
+
+    // Watch for card size changes (e.g. expanding emergency response or breakdown sections)
+    let cardResizeObs = null;
+    if (window.ResizeObserver && cardRef.current) {
+      cardResizeObs = new ResizeObserver(() => {
+        updatePopupPosition();
+      });
+      cardResizeObs.observe(cardRef.current);
+    }
+
+    return () => {
+      map.off('move zoom viewreset resize', handleMapMovement);
+      if (cardResizeObs) cardResizeObs.disconnect();
+    };
+  }, [map, selectedHotspot, updatePopupPosition]);
 
   // 5. Render Overlays according to mapMode, telemetry, and temporary resources
   useEffect(() => {
@@ -414,20 +495,48 @@ export function MapView({
   }, [map, activeRoute]);
 
   return (
-    <div className="relative w-full h-full">
+    <div className="relative w-full h-full overflow-hidden">
+      {/* Map DOM Canvas */}
       <div ref={mapContainerRef} className="w-full h-full" />
-      {/* Map-Anchored Portal for Selected Hotspot Detail Card */}
-      {popupContainer && selectedHotspot && ReactDOM.createPortal(
-        <HotspotCard
-          hotspot={selectedHotspot}
-          activeRoute={activeRoute}
-          onSetRoute={onSetRoute}
-          onShowTemporaryResources={onShowTemporaryResources}
-          showingTemporaryResources={showingTemporaryResources}
-          onClose={() => onSelectHotspot && onSelectHotspot(null)}
-          onViewFingerprint={onViewFingerprint}
-        />,
-        popupContainer
+
+      {/* Map-Anchored Smart Overlay Detail Card */}
+      {selectedHotspot && popupPos && popupPos.isVisible && (
+        <div
+          ref={cardRef}
+          className="absolute z-[1000] w-[370px] max-w-[calc(100%-32px)] transition-all duration-75 pointer-events-auto shadow-2xl"
+          style={{
+            left: `${popupPos.left}px`,
+            top: `${popupPos.top}px`,
+            maxHeight: 'calc(100% - 32px)',
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onWheel={(e) => e.stopPropagation()}
+        >
+          {/* Pointer Caret / Triangle Arrow */}
+          {popupPos.isAbove ? (
+            <div
+              className="absolute -bottom-2 w-3.5 h-3.5 bg-white/95 dark:bg-dark-850/95 border-r border-b border-slate-300 dark:border-slate-700/80 transform rotate-45 pointer-events-none shadow-md"
+              style={{ left: `${popupPos.arrowLeft - 7}px` }}
+            />
+          ) : (
+            <div
+              className="absolute -top-2 w-3.5 h-3.5 bg-white/95 dark:bg-dark-850/95 border-l border-t border-slate-300 dark:border-slate-700/80 transform rotate-45 pointer-events-none shadow-md"
+              style={{ left: `${popupPos.arrowLeft - 7}px` }}
+            />
+          )}
+
+          <HotspotCard
+            hotspot={selectedHotspot}
+            activeRoute={activeRoute}
+            onSetRoute={onSetRoute}
+            onShowTemporaryResources={onShowTemporaryResources}
+            showingTemporaryResources={showingTemporaryResources}
+            onClose={() => onSelectHotspot && onSelectHotspot(null)}
+            onViewFingerprint={onViewFingerprint}
+          />
+        </div>
       )}
     </div>
   );
