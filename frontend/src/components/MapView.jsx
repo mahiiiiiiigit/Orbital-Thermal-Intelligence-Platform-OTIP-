@@ -185,7 +185,7 @@ export function MapView({
     const cardHeight = cardEl && cardEl.offsetHeight > 100 ? cardEl.offsetHeight : 440;
 
     const MARGIN = 16;
-    const PIN_OFFSET = 12;
+    const PIN_OFFSET = 14;
 
     // Available space in viewport
     const spaceAbove = point.y - MARGIN;
@@ -385,39 +385,89 @@ export function MapView({
       }
     }
 
-    // Render Cluster Boundaries (Standard, Hybrid & Forest Risk modes)
-    if (mapMode === 'standard' || mapMode === 'hybrid' || mapMode === 'forest_risk') {
-      clusters.forEach((cluster) => {
-        const isFire = cluster.classification === 'INDUSTRIAL_FIRE';
-        const color = isFire
-          ? '#ef4444'
-          : (cluster.classification === 'GAS_FLARE' ? '#06b6d4' : '#8b5cf6');
+    // Render Cluster Boundaries and Cluster Markers across all modes
+    clusters.forEach((cluster) => {
+      if (!cluster.latitude || !cluster.longitude) return;
 
-        const circle = L.circle([cluster.latitude, cluster.longitude], {
-          radius: 5000,
-          color: color,
-          fillColor: color,
-          fillOpacity: 0.08,
-          weight: 1.5,
-          dashArray: '4, 6',
-        }).addTo(map);
+      const isFire = cluster.classification === 'INDUSTRIAL_FIRE';
+      const color = isFire
+        ? '#ef4444'
+        : (cluster.classification === 'GAS_FLARE' ? '#06b6d4' : '#8b5cf6');
 
-        circle.bindTooltip(
-          `<strong>${cluster.facility_name}</strong><br/>${cluster.classification} (${cluster.detection_count} detections)`,
-          { sticky: true, direction: 'top' }
-        );
+      // 1. Outer subtle halo boundary (5km radius)
+      const circle = L.circle([cluster.latitude, cluster.longitude], {
+        radius: 5000,
+        color: color,
+        fillColor: color,
+        fillOpacity: 0.08,
+        weight: 1.5,
+        dashArray: '4, 6',
+      }).addTo(map);
 
-        circle.on('click', (e) => {
-          lastMarkerClickTimeRef.current = Date.now();
-          if (e?.originalEvent) e.originalEvent.stopPropagation();
-          if (L.DomEvent) L.DomEvent.stopPropagation(e);
+      // 2. Distinct prominent Cluster Marker Badge with detection count: (18), (30), (48)
+      const count = cluster.detection_count || 1;
+      const clusterIconHtml = `
+        <div style="
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 36px;
+          height: 36px;
+          padding: 0 6px;
+          border-radius: 9999px;
+          background: #111722;
+          border: 2px solid ${color};
+          box-shadow: 0 0 14px ${color}80, 0 4px 12px rgba(0,0,0,0.6);
+          color: #ffffff;
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 11px;
+          font-weight: 800;
+          cursor: pointer;
+          user-select: none;
+          transition: transform 0.15s ease;
+        ">
+          (${count})
+        </div>
+      `;
 
-          if (onSelectCluster) onSelectCluster(cluster);
-          if (onSelectHotspot) onSelectHotspot(null);
-        });
-        clustersLayerRef.current.push(circle);
+      const clusterIcon = L.divIcon({
+        className: 'cluster-map-badge',
+        html: clusterIconHtml,
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
       });
-    }
+
+      const clusterMarker = L.marker([cluster.latitude, cluster.longitude], {
+        icon: clusterIcon,
+        zIndexOffset: 500, // Elevated above standard hotspot markers
+      }).addTo(map);
+
+      const tooltipContent = `<strong>Persistent Industrial Cluster — ${count} detections</strong><br/>${cluster.facility_name || 'Industrial Facility'}`;
+
+      clusterMarker.bindTooltip(tooltipContent, {
+        sticky: true,
+        direction: 'top',
+      });
+      circle.bindTooltip(tooltipContent, {
+        sticky: true,
+        direction: 'top',
+      });
+
+      const handleClusterClick = (e) => {
+        lastMarkerClickTimeRef.current = Date.now();
+        if (e?.originalEvent) e.originalEvent.stopPropagation();
+        if (L.DomEvent) L.DomEvent.stopPropagation(e);
+
+        if (onSelectCluster) onSelectCluster(cluster);
+        if (onSelectHotspot) onSelectHotspot(null);
+      };
+
+      clusterMarker.on('click', handleClusterClick);
+      circle.on('click', handleClusterClick);
+
+      clustersLayerRef.current.push(circle);
+      clustersLayerRef.current.push(clusterMarker);
+    });
 
     // Render Hotspot Markers (Standard, Hybrid, Forest Risk & Thermal modes)
     hotspots.forEach((hotspot) => {
