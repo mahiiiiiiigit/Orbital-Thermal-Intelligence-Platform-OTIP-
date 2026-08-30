@@ -247,6 +247,7 @@ export function App() {
               facilityIdentifier={selectedFingerprintFacility}
               mode={mode}
               onClose={() => setSelectedFingerprintFacility(null)}
+              onInvestigateEvent={(event) => setSelectedInvestigationEvent(event)}
             />
           )}
 
