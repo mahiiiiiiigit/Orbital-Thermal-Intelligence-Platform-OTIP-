@@ -454,7 +454,26 @@ def get_nearest_safety_resources(
     }
 
 
-@app.get("/api/v1/facilities/{facility_id}/thermal-profile")
+@app.get("/api/v1/facilities/thermal-profile")
+def get_facility_thermal_profile_query(
+    facility_id: str = Query(..., description="Facility name, ID, or coordinates"),
+    mode: str = Query("auto", pattern="^(auto|live|demo)$"),
+    source: str = Query("VIIRS_SNPP_NRT"),
+    days: int = Query(3, ge=1, le=5),
+):
+    """
+    Computes an empirical 30-day thermal fingerprint for an identifiable facility via query parameter.
+    """
+    classified_hotspots, resolved_mode, is_demo, _ = _get_active_hotspots(mode=mode, days=days, source=source)
+    profile = build_facility_thermal_profile(
+        facility_identifier=facility_id,
+        hotspots=classified_hotspots,
+        is_demo=is_demo,
+    )
+    return profile
+
+
+@app.get("/api/v1/facilities/{facility_id:path}/thermal-profile")
 def get_facility_thermal_profile(
     facility_id: str,
     mode: str = Query("auto", pattern="^(auto|live|demo)$"),

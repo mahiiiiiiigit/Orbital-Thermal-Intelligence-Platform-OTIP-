@@ -26,25 +26,38 @@ def build_facility_thermal_profile(
     # 1. Resolve registered facility metadata if known
     matched_facility = None
     clean_target = facility_identifier.lower().strip()
+    norm_target = clean_target.replace("/", " ").replace("-", " ").replace("(", " ").replace(")", " ").replace(",", " ").split()
+    norm_target_str = "".join(norm_target)
 
     for fac in KNOWN_FACILITIES:
-        if fac.get("facility_id", "").lower() == clean_target:
+        fac_id = fac.get("facility_id", "").lower().strip()
+        fac_name = fac.get("name", "").lower().strip()
+        
+        if fac_id == clean_target or fac_name == clean_target:
             matched_facility = fac
             break
-        if fac.get("name", "").lower() == clean_target:
+
+        norm_fac = "".join(fac_name.replace("/", " ").replace("-", " ").replace("(", " ").replace(")", " ").replace(",", " ").split())
+        if norm_fac == norm_target_str or norm_target_str in norm_fac or norm_fac in norm_target_str:
             matched_facility = fac
             break
-        fac_clean = (
-            fac.get("name", "")
-            .lower()
-            .replace(" ", "-")
-            .replace("(", "")
-            .replace(")", "")
-            .replace(",", "")
-        )
-        if fac_clean == clean_target:
-            matched_facility = fac
-            break
+
+    # If coordinate string passed (e.g. "22.47,70.06"), try matching by distance
+    if not matched_facility and "," in clean_target:
+        try:
+            parts = [float(p.strip()) for p in clean_target.split(",")]
+            if len(parts) == 2:
+                target_lat, target_lon = parts[0], parts[1]
+                for fac in KNOWN_FACILITIES:
+                    d = distance_metres(
+                        {"latitude": target_lat, "longitude": target_lon},
+                        {"latitude": fac["latitude"], "longitude": fac["longitude"]},
+                    )
+                    if d <= fac.get("radius_meters", 5000):
+                        matched_facility = fac
+                        break
+        except Exception:
+            pass
 
     # 2. Extract matching hotspot observations
     facility_name = matched_facility["name"] if matched_facility else facility_identifier
