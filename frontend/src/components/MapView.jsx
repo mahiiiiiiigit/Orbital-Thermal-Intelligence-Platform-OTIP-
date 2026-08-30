@@ -9,6 +9,7 @@ if (typeof window !== 'undefined') {
 import 'leaflet.heat';
 import { TAXONOMY_COLORS, THERMAL_GRADIENT, FFDR_COLORS } from '../constants/taxonomy';
 import { HotspotCard } from './HotspotCard';
+import { ClusterCard } from './ClusterCard';
 
 const TYPE_COLORS = {
   fire_station: '#ef4444',
@@ -28,6 +29,7 @@ export function MapView({
   theme = 'dark',
   regionConfig,
   selectedHotspot,
+  selectedCluster,
   activeRoute,
   onSetRoute,
   onSelectHotspot,
@@ -48,11 +50,14 @@ export function MapView({
   const ffdrLayerRef = useRef(null);
   const heatLayerRef = useRef(null);
 
-  // Track marker clicks to prevent map background click from closing popup immediately
+  // Track marker/cluster clicks to prevent map background click from closing popup immediately
   const lastMarkerClickTimeRef = useRef(0);
 
   // Dynamic Map-Anchored Overlay Position State
   const [popupPos, setPopupPos] = useState(null);
+
+  // Active anchor (hotspot or cluster)
+  const activeAnchor = selectedHotspot || selectedCluster || null;
 
   // 1. Initialize Leaflet Map Instance
   useEffect(() => {
@@ -67,14 +72,13 @@ export function MapView({
     // Zoom control
     L.control.zoom({ position: 'bottomright' }).addTo(initialMap);
 
-    // Map background click closes selected hotspot popup
+    // Map background click closes selected popups
     initialMap.on('click', () => {
       if (Date.now() - lastMarkerClickTimeRef.current < 400) {
-        return; // Ignore if a marker was just clicked
+        return; // Ignore if a marker/cluster was just clicked
       }
-      if (onSelectHotspot) {
-        onSelectHotspot(null);
-      }
+      if (onSelectHotspot) onSelectHotspot(null);
+      if (onSelectCluster) onSelectCluster(null);
     });
 
     setMap(initialMap);
@@ -140,22 +144,22 @@ export function MapView({
   // 3. Manage Region Pan/Zoom Navigation
   useEffect(() => {
     if (!map || !regionConfig) return;
-    if (activeRoute || selectedHotspot) return; // Don't override active incident focus
+    if (activeRoute || selectedHotspot || selectedCluster) return;
     map.flyTo(regionConfig.center, regionConfig.zoom, {
       duration: 1.2,
       easeLinearity: 0.25,
     });
-  }, [map, regionConfig, activeRoute, selectedHotspot]);
+  }, [map, regionConfig, activeRoute, selectedHotspot, selectedCluster]);
 
   // 4. Compute Smart Map-Anchored Popup Position (Zero-Clipping Calculation)
   const updatePopupPosition = useCallback(() => {
-    if (!map || !selectedHotspot) {
+    if (!map || !activeAnchor) {
       setPopupPos(null);
       return;
     }
 
-    const lat = Number(selectedHotspot.latitude);
-    const lon = Number(selectedHotspot.longitude);
+    const lat = Number(activeAnchor.latitude);
+    const lon = Number(activeAnchor.longitude);
     if (isNaN(lat) || isNaN(lon)) {
       setPopupPos(null);
       return;
@@ -220,11 +224,11 @@ export function MapView({
       markerY: point.y,
       isVisible: true,
     });
-  }, [map, selectedHotspot]);
+  }, [map, activeAnchor]);
 
   // Sync Popup Position on selection change and auto-pan if marker is near edge
   useEffect(() => {
-    if (!map || !selectedHotspot) {
+    if (!map || !activeAnchor) {
       setPopupPos(null);
       return;
     }
@@ -234,8 +238,8 @@ export function MapView({
     // Auto-pan slightly if marker is too close to container boundary
     const container = mapContainerRef.current;
     if (container) {
-      const lat = Number(selectedHotspot.latitude);
-      const lon = Number(selectedHotspot.longitude);
+      const lat = Number(activeAnchor.latitude);
+      const lon = Number(activeAnchor.longitude);
       if (!isNaN(lat) && !isNaN(lon)) {
         try {
           const pt = map.latLngToContainerPoint([lat, lon]);
@@ -259,11 +263,11 @@ export function MapView({
         }
       }
     }
-  }, [map, selectedHotspot, updatePopupPosition]);
+  }, [map, activeAnchor, updatePopupPosition]);
 
   // Keep Popup position updated during map movement / zoom / resize
   useEffect(() => {
-    if (!map || !selectedHotspot) return;
+    if (!map || !activeAnchor) return;
 
     const handleMapMovement = () => {
       updatePopupPosition();
@@ -284,7 +288,7 @@ export function MapView({
       map.off('move zoom viewreset resize moveend zoomend', handleMapMovement);
       if (cardResizeObs) cardResizeObs.disconnect();
     };
-  }, [map, selectedHotspot, updatePopupPosition]);
+  }, [map, activeAnchor, updatePopupPosition]);
 
   // 5. Render Overlays according to mapMode, telemetry, and temporary resources
   useEffect(() => {
@@ -407,7 +411,9 @@ export function MapView({
           lastMarkerClickTimeRef.current = Date.now();
           if (e?.originalEvent) e.originalEvent.stopPropagation();
           if (L.DomEvent) L.DomEvent.stopPropagation(e);
+
           if (onSelectCluster) onSelectCluster(cluster);
+          if (onSelectHotspot) onSelectHotspot(null);
         });
         clustersLayerRef.current.push(circle);
       });
@@ -435,7 +441,9 @@ export function MapView({
         lastMarkerClickTimeRef.current = Date.now();
         if (e?.originalEvent) e.originalEvent.stopPropagation();
         if (L.DomEvent) L.DomEvent.stopPropagation(e);
+
         if (onSelectHotspot) onSelectHotspot(hotspot);
+        if (onSelectCluster) onSelectCluster(null);
       });
 
       markersLayerRef.current.push(marker);
@@ -460,7 +468,9 @@ export function MapView({
           lastMarkerClickTimeRef.current = Date.now();
           if (e?.originalEvent) e.originalEvent.stopPropagation();
           if (L.DomEvent) L.DomEvent.stopPropagation(e);
+
           if (onSelectHotspot) onSelectHotspot(alt);
+          if (onSelectCluster) onSelectCluster(null);
         });
 
       alertsLayerRef.current.push(alertMarker);
@@ -524,8 +534,8 @@ export function MapView({
       {/* Map DOM Canvas */}
       <div ref={mapContainerRef} className="w-full h-full" />
 
-      {/* Map-Anchored Smart Overlay Detail Card */}
-      {selectedHotspot && popupPos && (
+      {/* Map-Anchored Smart Overlay Detail Card (Hotspot or Cluster) */}
+      {activeAnchor && popupPos && (
         <div
           ref={cardRef}
           className="absolute z-[1000] w-[370px] max-w-[calc(100%-32px)] transition-all duration-75 pointer-events-auto shadow-2xl"
@@ -552,15 +562,23 @@ export function MapView({
             />
           )}
 
-          <HotspotCard
-            hotspot={selectedHotspot}
-            activeRoute={activeRoute}
-            onSetRoute={onSetRoute}
-            onShowTemporaryResources={onShowTemporaryResources}
-            showingTemporaryResources={showingTemporaryResources}
-            onClose={() => onSelectHotspot && onSelectHotspot(null)}
-            onViewFingerprint={onViewFingerprint}
-          />
+          {selectedHotspot ? (
+            <HotspotCard
+              hotspot={selectedHotspot}
+              activeRoute={activeRoute}
+              onSetRoute={onSetRoute}
+              onShowTemporaryResources={onShowTemporaryResources}
+              showingTemporaryResources={showingTemporaryResources}
+              onClose={() => onSelectHotspot && onSelectHotspot(null)}
+              onViewFingerprint={onViewFingerprint}
+            />
+          ) : selectedCluster ? (
+            <ClusterCard
+              cluster={selectedCluster}
+              onClose={() => onSelectCluster && onSelectCluster(null)}
+              onViewFingerprint={onViewFingerprint}
+            />
+          ) : null}
         </div>
       )}
     </div>

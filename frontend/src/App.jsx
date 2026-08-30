@@ -228,6 +228,7 @@ export function App() {
             theme={theme}
             regionConfig={REGIONS[selectedRegion]}
             selectedHotspot={selectedHotspot}
+            selectedCluster={selectedCluster}
             activeRoute={activeRoute}
             onSetRoute={setActiveRoute}
             onSelectHotspot={handleSelectHotspot}
