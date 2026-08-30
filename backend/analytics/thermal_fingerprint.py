@@ -146,8 +146,14 @@ def build_facility_thermal_profile(
     # Status Determination & Normal Operating Range
     if not has_sufficient_history:
         status = "INSUFFICIENT_DATA"
-        status_reason = f"Insufficient historical data for reliable fingerprint (only {total_obs} observation(s) recorded; minimum 3 required)."
+        status_reason = "Insufficient historical observations"
         normal_range = None
+        z_score = None
+        pct_deviation = None
+        deviation_mw = None
+        std_dev_frp = None
+        anomalies_count = 0
+        trend_direction = "INSUFFICIENT_DATA"
     else:
         normal_min = max(0.0, round(avg_frp - 1.5 * std_dev_frp, 2))
         normal_max = round(avg_frp + 1.5 * std_dev_frp, 2)

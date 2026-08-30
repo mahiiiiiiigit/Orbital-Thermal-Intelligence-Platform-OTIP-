@@ -58,8 +58,10 @@ export function FacilityFingerprintModal({
     : '#8b5cf6';
 
   const metrics = profile?.metrics || {};
-  const isAbnormal = profile?.status === 'ABNORMAL' || (metrics.z_score && metrics.z_score >= 3.0);
-  const isElevated = profile?.status === 'ELEVATED' || (metrics.z_score && metrics.z_score >= 1.5 && metrics.z_score < 3.0);
+  const hasHistory = Boolean(profile?.has_sufficient_history);
+
+  const isAbnormal = hasHistory && (profile?.status === 'ABNORMAL' || (metrics.z_score && metrics.z_score >= 3.0));
+  const isElevated = hasHistory && (profile?.status === 'ELEVATED' || (metrics.z_score && metrics.z_score >= 1.5 && metrics.z_score < 3.0));
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -96,8 +98,8 @@ export function FacilityFingerprintModal({
 
   const getInterpretationText = () => {
     if (!profile) return '';
-    if (!profile.has_sufficient_history) {
-      return `Insufficient historical observation data for this facility (${profile.total_observations || 0} observations recorded; minimum 3 required).`;
+    if (!hasHistory) {
+      return `Insufficient historical observations for this facility (${profile.total_observations || metrics.total_observations || 0} observations recorded; minimum 3 required for a statistically valid envelope).`;
     }
     if (isAbnormal) {
       return `Current FRP (${metrics.current_frp} MW) is significantly above the historical baseline (+${metrics.z_score}σ excursion).`;
@@ -110,7 +112,7 @@ export function FacilityFingerprintModal({
 
   // SVG Chart Calculations for 30-Day FRP Profile
   const renderTrendChart = () => {
-    if (!profile || !profile.has_sufficient_history || !profile.time_series || profile.time_series.length < 3) {
+    if (!profile || !hasHistory || !profile.time_series || profile.time_series.length < 3) {
       return (
         <div className="bg-dark-900 border border-dark-700/80 rounded-xl p-8 text-center flex flex-col items-center justify-center min-h-[220px]">
           <HelpCircle className="w-8 h-8 text-slate-500 mb-2 opacity-60" />
@@ -118,7 +120,7 @@ export function FacilityFingerprintModal({
             Insufficient Historical Data for Reliable Thermal Fingerprint
           </h4>
           <p className="text-[11px] text-slate-400 mt-1 max-w-sm">
-            {profile?.total_observations ?? 0} observation(s) available in current window. Minimum 3 passes required to construct an empirical statistical envelope.
+            {profile?.total_observations ?? metrics.total_observations ?? 0} observation(s) available in current window. Minimum 3 passes required to construct an empirical statistical envelope.
           </p>
         </div>
       );
@@ -373,7 +375,7 @@ export function FacilityFingerprintModal({
 
           <div className="bg-dark-850 border border-dark-700/80 rounded-xl p-3">
             <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
-              Average FRP
+              Average FRP {hasHistory ? '' : '(uncalibrated)'}
             </span>
             <div className="flex items-baseline gap-1 mt-1">
               <span className="text-2xl font-black font-mono text-sky-400 tracking-tight">
@@ -403,11 +405,15 @@ export function FacilityFingerprintModal({
             </span>
             <div className="flex items-baseline gap-1 mt-1">
               <span className={`text-2xl font-black font-mono tracking-tight ${
-                (metrics.anomaly_count || 0) > 0 ? 'text-red-400' : 'text-slate-100'
+                hasHistory && (metrics.anomaly_count || 0) > 0
+                  ? 'text-red-400'
+                  : 'text-slate-100'
               }`}>
-                {metrics.anomaly_count ?? 0}
+                {hasHistory ? (metrics.anomaly_count ?? 0) : 'N/A'}
               </span>
-              <span className="text-xs text-slate-500 font-mono">events</span>
+              {hasHistory && (
+                <span className="text-xs text-slate-500 font-mono">events</span>
+              )}
             </div>
           </div>
         </div>
@@ -451,39 +457,50 @@ export function FacilityFingerprintModal({
                     <div className="flex justify-between items-center">
                       <span className="text-slate-400">Baseline Mean</span>
                       <span className="font-mono font-bold text-slate-100">
-                        {metrics.average_frp ?? 'N/A'} MW
+                        {metrics.average_frp != null
+                          ? `${metrics.average_frp} MW ${hasHistory ? '' : '(uncalibrated)'}`
+                          : 'N/A'}
                       </span>
                     </div>
 
                     <div className="flex justify-between items-center">
                       <span className="text-slate-400">Current Z-Score</span>
                       <span className={`font-mono font-bold ${
-                        isAbnormal ? 'text-red-400' : 'text-slate-100'
+                        hasHistory && isAbnormal ? 'text-red-400' : 'text-slate-100'
                       }`}>
-                        {metrics.z_score !== undefined ? `+${metrics.z_score}σ` : 'N/A'}
+                        {hasHistory && metrics.z_score != null ? `+${metrics.z_score}σ` : 'N/A'}
                       </span>
                     </div>
+
+                    {/* Show explicit reason when Z-score is N/A */}
+                    {!hasHistory && (
+                      <div className="text-[10.5px] text-amber-400/90 font-mono bg-dark-900/90 border border-dark-750 rounded p-1.5 leading-snug">
+                        Reason: Insufficient historical observations
+                      </div>
+                    )}
 
                     <div className="flex justify-between items-center">
                       <span className="text-slate-400">FRP Deviation</span>
                       <span className={`font-mono font-bold ${
-                        (metrics.pct_deviation || 0) > 0 ? 'text-amber-400' : 'text-slate-300'
+                        hasHistory && (metrics.pct_deviation || 0) > 0 ? 'text-amber-400' : 'text-slate-400'
                       }`}>
-                        {metrics.pct_deviation ? `${metrics.pct_deviation > 0 ? '+' : ''}${metrics.pct_deviation}%` : 'N/A'}
+                        {hasHistory && metrics.pct_deviation != null
+                          ? `${metrics.pct_deviation > 0 ? '+' : ''}${metrics.pct_deviation}%`
+                          : 'N/A'}
                       </span>
                     </div>
 
                     <div className="flex justify-between items-center">
                       <span className="text-slate-400">Maximum FRP</span>
                       <span className="font-mono font-bold text-amber-400">
-                        {metrics.maximum_frp ?? 'N/A'} MW
+                        {metrics.maximum_frp != null ? `${metrics.maximum_frp} MW` : 'N/A'}
                       </span>
                     </div>
 
                     <div className="flex justify-between items-center">
                       <span className="text-slate-400">Std Deviation</span>
                       <span className="font-mono text-slate-300">
-                        {metrics.std_dev_frp != null ? `±${metrics.std_dev_frp} MW` : 'N/A'}
+                        {hasHistory && metrics.std_dev_frp != null ? `±${metrics.std_dev_frp} MW` : 'N/A'}
                       </span>
                     </div>
 
