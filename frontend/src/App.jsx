@@ -187,8 +187,8 @@ export function App() {
   }, [allHotspots, clusters, alerts]);
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-slate-100 dark:bg-dark-900 overflow-hidden text-slate-900 dark:text-slate-100 transition-colors duration-200">
-      {/* Top Operations Navigation Bar */}
+    <div className="flex flex-col h-screen w-screen bg-slate-50 dark:bg-dark-900 overflow-hidden text-slate-900 dark:text-slate-100 transition-colors duration-200">
+      {/* Top Navigation Bar */}
       <Navbar
         mode={mode}
         onToggleMode={(newMode) => setMode(newMode)}
@@ -207,16 +207,20 @@ export function App() {
         stats={stats}
       />
 
-      {/* Main Operations Console Layout */}
+      {/* Main Workspace Layout */}
       <div className="flex flex-1 overflow-hidden relative">
-        {/* Left Analytics Overview Sidebar */}
+        {/* Left Analytics Command Center */}
         <Sidebar
           hotspots={allHotspots}
           clusters={clusters}
           alerts={alerts}
+          selectedHotspot={selectedHotspot}
           selectedCluster={selectedCluster}
-          onSelectCluster={handleSelectCluster}
-          onSelectHotspot={handleSelectHotspot}
+          activeRoute={activeRoute}
+          onSetRoute={setActiveRoute}
+          onShowTemporaryResources={setTemporarySafetyResources}
+          showingTemporaryResources={temporarySafetyResources.length > 0}
+          mode={mode}
           notice={notice}
           filterClass={filterClass}
           onSelectFilterClass={setFilterClass}
@@ -225,9 +229,9 @@ export function App() {
           onViewFingerprint={(facility) => setSelectedFingerprintFacility(facility)}
         />
 
-        {/* Center / Dominant GIS Map Area */}
+        {/* Center / Main GIS Map Area */}
         <main className="flex-1 relative h-full w-full bg-slate-200 dark:bg-dark-950 overflow-hidden transition-colors duration-200">
-          {/* Leaflet Map with Smart Map-Anchored Popups */}
+          {/* Leaflet Map */}
           <MapView
             hotspots={visibleHotspots}
             clusters={clusters}
@@ -258,32 +262,32 @@ export function App() {
 
           {/* Floating FSI Demo Data Banner */}
           {dataSource === 'fsi' && (
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] bg-amber-500/90 text-slate-950 font-bold text-[11px] py-1 px-3 rounded-lg shadow-lg border border-amber-300 backdrop-blur-md flex items-center gap-1.5 pointer-events-none">
-              <Trees className="w-3.5 h-3.5 text-slate-950" />
-              <span>DEMO DATA — Simulated Forest Survey of India (FSI) Wildfire Feed</span>
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-amber-500/95 text-slate-950 font-bold text-xs py-1.5 px-4 rounded-xl shadow-2xl border border-amber-300 backdrop-blur-md flex items-center gap-2">
+              <Trees className="w-4 h-4 text-slate-950" />
+              <span>DEMO DATA — Simulated Forest Survey of India (FSI) Wildfire Intelligence</span>
             </div>
           )}
 
           {/* Floating Emergency Alert Banner (for Critical Spikes) */}
           {alerts.length > 0 && dataSource !== 'fsi' && (
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] bg-red-600/95 text-white font-bold text-[11px] py-1 px-3.5 rounded-lg shadow-xl border border-red-400/40 backdrop-blur-md flex items-center gap-2 pointer-events-none animate-pulse">
-              <AlertTriangle className="w-3.5 h-3.5 text-white" />
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-red-600/95 text-white font-bold text-xs py-2 px-4 rounded-xl shadow-2xl border border-red-400/50 backdrop-blur-md flex items-center gap-2 animate-bounce">
+              <AlertTriangle className="w-4 h-4 text-white" />
               <span>
-                CRITICAL ANOMALY: {alerts[0].facility_name} • {alerts[0].current_frp} MW (+{alerts[0].z_score}σ)
+                CRITICAL ALERT: {alerts[0].facility_name} — {alerts[0].current_frp} MW Radiance (Z-Score: +{alerts[0].z_score}σ)
               </span>
             </div>
           )}
 
           {/* Floating Intensity Legend (Thermal, Hybrid & Forest Risk modes) */}
           {mapMode !== 'standard' && (
-            <div className="absolute bottom-5 right-5 z-[1000]">
+            <div className="absolute bottom-6 right-6 z-[1000]">
               <ThermalLegend mode={mapMode} />
             </div>
           )}
 
           {/* Floating Timeline Scrubbing Controls */}
           {timelineDates.length > 1 && (
-            <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-[1000]">
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000]">
               <TimelineSlider
                 dates={timelineDates}
                 currentIndex={timelineIndex}

@@ -31,45 +31,45 @@ export function TimelineSlider({
   const currentDate = dates[currentIndex] || dates[dates.length - 1];
 
   return (
-    <div className="bg-white/95 dark:bg-dark-850/95 border border-slate-300 dark:border-dark-700 rounded-xl p-2.5 shadow-2xl backdrop-blur-md flex items-center gap-3 w-full max-w-lg transition-colors duration-200">
-      {/* Playback Controls */}
-      <div className="flex items-center gap-0.5">
+    <div className="bg-white/95 dark:bg-dark-850/90 border border-slate-200 dark:border-slate-800 rounded-xl p-3 shadow-2xl backdrop-blur-md flex items-center gap-3 w-full max-w-xl transition-colors duration-200">
+      {/* Playback controls */}
+      <div className="flex items-center gap-1">
         <button
           type="button"
           onClick={() => onChangeIndex(0)}
-          className="p-1 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-dark-750 transition-colors"
-          title="Reset to earliest pass"
+          className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          title="Reset to Day 1"
         >
-          <SkipBack className="w-3.5 h-3.5" />
+          <SkipBack className="w-4 h-4" />
         </button>
 
         <button
           type="button"
           onClick={() => setIsPlaying(!isPlaying)}
-          className="p-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white shadow-sm transition-colors mx-0.5"
+          className="p-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white shadow-md shadow-sky-600/30 transition-colors"
           title={isPlaying ? 'Pause Timeline' : 'Play Timeline'}
         >
-          {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+          {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
         </button>
 
         <button
           type="button"
           onClick={() => onChangeIndex(dates.length - 1)}
-          className="p-1 rounded-md text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-dark-750 transition-colors"
-          title="Jump to latest pass"
+          className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          title="Fast-forward to Latest"
         >
-          <SkipForward className="w-3.5 h-3.5" />
+          <SkipForward className="w-4 h-4" />
         </button>
       </div>
 
       {/* Slider Track */}
       <div className="flex-1 space-y-1">
-        <div className="flex justify-between items-center text-[10.5px]">
-          <div className="flex items-center gap-1 text-slate-600 dark:text-slate-400 font-medium">
-            <Calendar className="w-3 h-3 text-sky-500" />
-            <span>Pass Date:</span>
+        <div className="flex justify-between items-center text-[11px]">
+          <div className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
+            <Calendar className="w-3 h-3 text-sky-500 dark:text-sky-400" />
+            <span>Timeline Scrubbing:</span>
           </div>
-          <span className="font-mono font-bold text-sky-700 dark:text-sky-300 bg-sky-500/10 border border-sky-500/30 px-1.5 py-0.2 rounded text-[10px]">
+          <span className="font-mono font-bold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800/40 px-2 py-0.5 rounded">
             {currentDate}
           </span>
         </div>
@@ -79,9 +79,9 @@ export function TimelineSlider({
           max={dates.length - 1}
           value={currentIndex}
           onChange={(e) => onChangeIndex(Number(e.target.value))}
-          className="w-full h-1.5 bg-slate-200 dark:bg-dark-700 rounded-lg cursor-pointer appearance-none"
+          className="w-full h-1.5 bg-slate-300 dark:bg-slate-700 rounded-lg cursor-pointer appearance-none"
         />
-        <div className="flex justify-between text-[9px] text-slate-400 dark:text-slate-500 font-mono">
+        <div className="flex justify-between text-[9px] text-slate-500 font-mono">
           <span>{dates[0]}</span>
           <span>{dates[dates.length - 1]}</span>
         </div>
