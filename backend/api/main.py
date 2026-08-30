@@ -470,6 +470,11 @@ def get_facility_thermal_profile_query(
         hotspots=classified_hotspots,
         is_demo=is_demo,
     )
+    if profile is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Facility '{facility_id}' not found in registry and has no recorded satellite detections.",
+        )
     return profile
 
 
@@ -491,6 +496,11 @@ def get_facility_thermal_profile(
         hotspots=classified_hotspots,
         is_demo=is_demo,
     )
+    if profile is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Facility '{facility_id}' not found in registry and has no recorded satellite detections.",
+        )
     return profile
 
 

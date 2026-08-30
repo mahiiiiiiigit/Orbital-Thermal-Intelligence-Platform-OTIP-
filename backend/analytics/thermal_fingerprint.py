@@ -18,14 +18,14 @@ def build_facility_thermal_profile(
     facility_identifier: str,
     hotspots: List[Dict[str, Any]],
     is_demo: bool = False,
-) -> Dict[str, Any]:
+) -> Optional[Dict[str, Any]]:
     """
     Computes a comprehensive 30-day empirical thermal fingerprint for a facility.
     Matches observations by facility_id, facility_name, or geographic proximity.
     """
     # 1. Resolve registered facility metadata if known
     matched_facility = None
-    clean_target = facility_identifier.lower().strip()
+    clean_target = str(facility_identifier).lower().strip()
     norm_target = clean_target.replace("/", " ").replace("-", " ").replace("(", " ").replace(")", " ").replace(",", " ").split()
     norm_target_str = "".join(norm_target)
 
@@ -82,7 +82,11 @@ def build_facility_thermal_profile(
     total_obs = len(matching_records)
     has_sufficient_history = total_obs >= 3
 
-    # If no records found, return empty profile
+    # If no records found AND not a known facility in registry, return None (unknown facility -> 404)
+    if total_obs == 0 and matched_facility is None:
+        return None
+
+    # If registered facility has 0 observations in current window, return empty NO_DATA payload
     if total_obs == 0:
         return {
             "facility_id": clean_target,
@@ -93,11 +97,29 @@ def build_facility_thermal_profile(
             "longitude": matched_facility.get("longitude") if matched_facility else None,
             "has_sufficient_history": False,
             "status": "NO_DATA",
-            "notice": "No thermal observations recorded for this facility in current observation window.",
+            "status_reason": "No thermal observations recorded for this facility in current observation window.",
             "total_observations": 0,
             "active_days": 0,
+            "metrics": {
+                "total_observations": 0,
+                "active_days": 0,
+                "average_frp": None,
+                "median_frp": None,
+                "maximum_frp": None,
+                "minimum_frp": None,
+                "std_dev_frp": None,
+                "current_frp": None,
+                "deviation_mw": None,
+                "pct_deviation": None,
+                "z_score": None,
+                "anomaly_count": 0,
+                "last_detected_timestamp": None,
+                "trend_direction": "NO_DATA",
+            },
+            "normal_operating_range": None,
             "time_series": [],
             "is_demo": is_demo,
+            "source_label": "DEMO DATA (Simulated Facility History)" if is_demo else "NASA FIRMS (Empirical Orbital Telemetry)",
         }
 
     # Extract FRP series
@@ -108,40 +130,13 @@ def build_facility_thermal_profile(
     med_frp = round(median(frp_series), 2)
     max_frp = round(max(frp_series), 2)
     min_frp = round(min(frp_series), 2)
-    std_dev_frp = round(pstdev(frp_series), 2) if total_obs > 1 else 0.0
+    std_dev_calc = round(pstdev(frp_series), 2) if total_obs > 1 else 0.0
 
     current_record = matching_records[-1]
     current_frp = float(current_record.get("frp", 0.0))
     current_classification = current_record.get("classification", "PERSISTENT_INDUSTRIAL")
     current_risk_score = current_record.get("risk_score", 50.0)
     current_risk_level = current_record.get("risk_level", "MEDIUM")
-
-    deviation_mw = round(current_frp - avg_frp, 2)
-    pct_deviation = round(((current_frp - avg_frp) / avg_frp) * 100.0, 1) if avg_frp > 0 else 0.0
-    z_score = round((current_frp - avg_frp) / std_dev_frp, 2) if std_dev_frp > 0 else 0.0
-
-    # Count anomalies (Z >= 2.5 or Industrial Fire)
-    anomalies_count = 0
-    for r in matching_records:
-        r_frp = float(r.get("frp", 0.0))
-        if std_dev_frp > 0 and (r_frp - avg_frp) / std_dev_frp >= 2.5:
-            anomalies_count += 1
-        elif r.get("classification") == "INDUSTRIAL_FIRE":
-            anomalies_count += 1
-
-    # Trend calculation (comparing recent half vs earlier half)
-    if total_obs >= 4:
-        split_idx = total_obs // 2
-        earlier_mean = mean(frp_series[:split_idx])
-        recent_mean = mean(frp_series[split_idx:])
-        if recent_mean > earlier_mean * 1.25:
-            trend_direction = "RISING"
-        elif recent_mean < earlier_mean * 0.75:
-            trend_direction = "DECLINING"
-        else:
-            trend_direction = "STABLE"
-    else:
-        trend_direction = "STABLE"
 
     # Status Determination & Normal Operating Range
     if not has_sufficient_history:
@@ -155,6 +150,34 @@ def build_facility_thermal_profile(
         anomalies_count = 0
         trend_direction = "INSUFFICIENT_DATA"
     else:
+        std_dev_frp = std_dev_calc
+        deviation_mw = round(current_frp - avg_frp, 2)
+        pct_deviation = round(((current_frp - avg_frp) / avg_frp) * 100.0, 1) if avg_frp > 0 else 0.0
+        z_score = round((current_frp - avg_frp) / std_dev_frp, 2) if std_dev_frp > 0 else 0.0
+
+        # Count anomalies (Z >= 2.5 or Industrial Fire)
+        anomalies_count = 0
+        for r in matching_records:
+            r_frp = float(r.get("frp", 0.0))
+            if std_dev_frp > 0 and (r_frp - avg_frp) / std_dev_frp >= 2.5:
+                anomalies_count += 1
+            elif r.get("classification") == "INDUSTRIAL_FIRE":
+                anomalies_count += 1
+
+        # Trend calculation (comparing recent half vs earlier half)
+        if total_obs >= 4:
+            split_idx = total_obs // 2
+            earlier_mean = mean(frp_series[:split_idx])
+            recent_mean = mean(frp_series[split_idx:])
+            if recent_mean > earlier_mean * 1.25:
+                trend_direction = "RISING"
+            elif recent_mean < earlier_mean * 0.75:
+                trend_direction = "DECLINING"
+            else:
+                trend_direction = "STABLE"
+        else:
+            trend_direction = "STABLE"
+
         normal_min = max(0.0, round(avg_frp - 1.5 * std_dev_frp, 2))
         normal_max = round(avg_frp + 1.5 * std_dev_frp, 2)
         upper_3sigma = round(avg_frp + 3.0 * std_dev_frp, 2)
@@ -179,7 +202,10 @@ def build_facility_thermal_profile(
     time_series = []
     for idx, r in enumerate(matching_records):
         r_frp = float(r.get("frp", 0.0))
-        is_anom = (std_dev_frp > 0 and (r_frp - avg_frp) / std_dev_frp >= 2.5) or r.get("classification") == "INDUSTRIAL_FIRE"
+        is_anom = (
+            (std_dev_frp is not None and std_dev_frp > 0 and (r_frp - avg_frp) / std_dev_frp >= 2.5)
+            or r.get("classification") == "INDUSTRIAL_FIRE"
+        )
         time_series.append(
             {
                 "index": idx + 1,
@@ -207,6 +233,8 @@ def build_facility_thermal_profile(
         "status": status,  # NORMAL | ELEVATED | ABNORMAL | INSUFFICIENT_DATA
         "status_reason": status_reason,
         "has_sufficient_history": has_sufficient_history,
+        "total_observations": total_obs,
+        "active_days": len(active_dates),
         "metrics": {
             "total_observations": total_obs,
             "active_days": len(active_dates),
@@ -221,7 +249,7 @@ def build_facility_thermal_profile(
             "z_score": z_score,
             "anomaly_count": anomalies_count,
             "last_detected_timestamp": current_record.get("timestamp"),
-            "trend_direction": trend_direction,  # RISING | STABLE | DECLINING
+            "trend_direction": trend_direction,  # RISING | STABLE | DECLINING | INSUFFICIENT_DATA
         },
         "normal_operating_range": normal_range,
         "time_series": time_series,
