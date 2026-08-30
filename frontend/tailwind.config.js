@@ -9,23 +9,25 @@ export default {
     extend: {
       colors: {
         dark: {
-          900: '#070d19',
-          850: '#0b1324',
-          800: '#101a33',
-          750: '#172445',
-          700: '#1e2f57',
-          600: '#2d4378',
+          950: '#0c111a',
+          900: '#111722', // Main operations charcoal/navy background
+          850: '#161e2c', // Panel & Sidebar background
+          800: '#1c2536', // Card container surface
+          750: '#232f44', // Elevated surface & hover state
+          700: '#2d3b54', // Low-contrast subtle borders
+          600: '#3d4f6e', // Outline & secondary borders
         },
         accent: {
           blue: '#38bdf8',
           cyan: '#06b6d4',
-          green: '#22c55e',
+          teal: '#14b8a6',
+          green: '#10b981',
           amber: '#f59e0b',
-          yellow: '#facc15',
+          yellow: '#eab308',
           orange: '#f97316',
           red: '#ef4444',
           purple: '#8b5cf6',
-          pink: '#ec4899',
+          slate: '#64748b',
         }
       },
       fontFamily: {

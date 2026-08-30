@@ -3,23 +3,20 @@ import { ConfidenceBadge, RiskBadge, DangerBadge } from './RiskBadge';
 import { TAXONOMY_COLORS } from '../constants/taxonomy';
 import {
   ShieldAlert,
-  CheckCircle2,
   Navigation,
   Activity,
   AlertOctagon,
-  ChevronDown,
-  ChevronUp,
-  MapPin,
-  FileText,
+  X,
   Eye,
   EyeOff,
   PhoneCall,
   Truck,
-  X,
-  AlertTriangle,
-  LifeBuoy,
   Gauge,
   Layers,
+  FileText,
+  HelpCircle,
+  Clock,
+  Compass,
 } from 'lucide-react';
 import { fetchEmergencyRoute, fetchNearestSafetyResources, getDossierDownloadUrl } from '../services/api';
 
@@ -40,14 +37,12 @@ export function HotspotCard({
 
   // Contextual Emergency Response Section State (CLOSED by default)
   const [isOpenRespond, setIsOpenRespond] = useState(false);
-  const [showEvacSection, setShowEvacSection] = useState(false);
   const [triageData, setTriageData] = useState(null);
   const [loadingTriage, setLoadingTriage] = useState(false);
 
   // Reset states when selected hotspot changes
   useEffect(() => {
     setIsOpenRespond(false);
-    setShowEvacSection(false);
     setShowRiskBreakdown(false);
     setTriageData(null);
   }, [hotspot?.id || hotspot?.latitude]);
@@ -59,63 +54,39 @@ export function HotspotCard({
       const data = await fetchNearestSafetyResources({
         lat: hotspot.latitude,
         lon: hotspot.longitude,
-        classification: hotspot.classification,
-        frp: hotspot.frp,
-        riskScore: hotspot.risk_score || 50.0,
+        event_type: hotspot.classification || 'GENERIC',
       });
       setTriageData(data);
     } catch (err) {
-      console.error('Failed to load triage resources:', err);
+      console.error(err);
     } finally {
       setLoadingTriage(false);
     }
   }, [hotspot]);
 
-  if (!hotspot) {
-    return null;
-  }
+  if (!hotspot) return null;
 
-  const isFsiDemo = hotspot.source === 'DEMO_FSI' || (hotspot.is_demo === true && hotspot.fire_danger_level);
-  const color = TAXONOMY_COLORS[hotspot.classification] || '#94a3b8';
-  const reasons = hotspot.reasons && hotspot.reasons.length > 0
-    ? hotspot.reasons
-    : [hotspot.explanation || 'Thermal signature evaluated by decision engine.'];
+  const color = TAXONOMY_COLORS[hotspot.classification] || '#38bdf8';
+  const isFsiDemo = Boolean(hotspot.source === 'FSI_DEMO' || hotspot.is_demo);
+  const isCriticalSpike = hotspot.classification === 'INDUSTRIAL_FIRE' || (hotspot.frp && hotspot.frp >= 90);
+  const isWildfire = hotspot.classification === 'WILDFIRE';
+  const canRespond = isCriticalSpike || isWildfire || hotspot.risk_level === 'CRITICAL' || hotspot.risk_level === 'HIGH' || hotspot.fire_danger_level === 'Extreme' || hotspot.fire_danger_level === 'Very High';
 
-  // Smart Risk Score fields
-  const riskScore = hotspot.risk_score != null ? hotspot.risk_score : 25.0;
-  const riskLevel = hotspot.risk_level ? String(hotspot.risk_level).toUpperCase() : (riskScore >= 75 ? 'CRITICAL' : (riskScore >= 50 ? 'HIGH' : (riskScore >= 25 ? 'MEDIUM' : 'LOW')));
+  // Smart Risk Score metrics
+  const riskScore = typeof hotspot.risk_score === 'number' ? hotspot.risk_score : 50.0;
+  const riskLevel = hotspot.risk_level || 'MEDIUM';
   const riskBreakdown = hotspot.risk_breakdown || {};
-  const riskExplanation = hotspot.risk_explanation || `${riskLevel} risk event evaluated by multi-factor thermal intelligence model.`;
+  const riskExplanation = hotspot.risk_explanation || hotspot.explanation || 'Evaluated by OTIP multi-factor thermal intelligence model.';
 
-  // Identify Critical Thermal Spikes / Industrial Excursions
-  const isCriticalSpike =
-    hotspot.classification === 'INDUSTRIAL_FIRE' ||
-    Boolean(hotspot.z_score && hotspot.z_score >= 3.0) ||
-    riskLevel === 'CRITICAL';
+  const nearest = triageData?.nearest || {};
 
-  // Identify Wildfires with high or critical risk
-  const isWildfireHighRisk =
-    hotspot.classification === 'WILDFIRE' &&
-    (riskLevel === 'HIGH' || riskLevel === 'CRITICAL' || hotspot.fire_danger_level === 'HIGH' || hotspot.fire_danger_level === 'EXTREME' || hotspot.large_forest_fire);
-
-  // General dangerous event condition where [RESPOND] action is available
-  const canRespond =
-    isCriticalSpike ||
-    isWildfireHighRisk ||
-    (hotspot.classification === 'GAS_FLARE' && hotspot.frp >= 40) ||
-    riskScore >= 50;
-
-  const nearest = triageData?.nearest_resources || {};
-  const sop = triageData?.recommended_response || {};
-
-  // Event-specific resource ordering
   const getResourceList = () => {
-    if (hotspot.classification === 'WILDFIRE') {
+    if (isWildfire || hotspot.context === 'forest') {
       return [
-        { key: 'fire_station', label: 'Forest Fire Response Base' },
-        { key: 'hospital', label: 'Nearest Hospital & Burn Care' },
-        { key: 'police', label: 'Police & SDRF Outpost' },
-        { key: 'shelter', label: 'Official Evacuation / Safe Location' },
+        { key: 'fire_station', label: 'Forest Fire Control Room' },
+        { key: 'hospital', label: 'Nearest Emergency Medical' },
+        { key: 'police', label: 'Local Police Assistance' },
+        { key: 'shelter', label: 'Evacuation Shelter / Camp' },
       ];
     }
     return [
@@ -145,24 +116,6 @@ export function HotspotCard({
     }
   };
 
-  const handleRouteToResource = async (res) => {
-    if (!res) return;
-    setLoadingRoute(true);
-    setRouteError(null);
-    try {
-      const data = await fetchEmergencyRoute(hotspot.latitude, hotspot.longitude, res.latitude, res.longitude);
-      if (data && data.origin_depot) {
-        data.origin_depot.name = res.name;
-      }
-      onSetRoute(data);
-    } catch (err) {
-      console.error(err);
-      setRouteError('Failed to calculate road route');
-    } finally {
-      setLoadingRoute(false);
-    }
-  };
-
   const handleToggleMapResources = () => {
     if (!onShowTemporaryResources) return;
     if (showingTemporaryResources) {
@@ -173,7 +126,6 @@ export function HotspotCard({
     }
   };
 
-  // Color gradient for risk score progress bar
   const getRiskColor = (score) => {
     if (score >= 75) return '#ef4444'; // red
     if (score >= 50) return '#f97316'; // orange
@@ -181,11 +133,14 @@ export function HotspotCard({
     return '#10b981'; // green
   };
 
+  const facilityIdentifier = hotspot.facility_name || `${hotspot.latitude?.toFixed(2)},${hotspot.longitude?.toFixed(2)}`;
+  const hasFacilityProfile = Boolean(hotspot.facility_name || ['GAS_FLARE', 'PERSISTENT_INDUSTRIAL', 'MINING_ACTIVITY', 'INDUSTRIAL_FIRE'].includes(hotspot.classification));
+
   return (
-    <div className="bg-white/95 dark:bg-dark-850/95 border border-slate-300 dark:border-slate-700/80 rounded-2xl p-4 space-y-3 shadow-2xl backdrop-blur-xl transition-colors duration-200 max-h-[82vh] overflow-y-auto select-text">
-      {/* 1. Header: Classification, Confidence, Facility, Lat/Lon, Date, and Close Button */}
-      <div className="flex items-start justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-2.5">
-        <div className="flex-1 pr-1">
+    <div className="bg-white/95 dark:bg-dark-850/95 border border-slate-300 dark:border-dark-700/90 rounded-xl p-3.5 space-y-3 shadow-2xl backdrop-blur-md transition-colors duration-200 max-h-[82vh] overflow-y-auto select-text">
+      {/* 1. Header: Classification, Badges, Close Button */}
+      <div className="flex items-start justify-between gap-2 border-b border-slate-200 dark:border-dark-700/80 pb-2.5">
+        <div className="flex-1 min-w-0 pr-1">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span
               className="w-2.5 h-2.5 rounded-full flex-shrink-0"
@@ -195,17 +150,20 @@ export function HotspotCard({
               {hotspot.classification}
             </span>
             {isFsiDemo && (
-              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/40">
+              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-300 border border-amber-500/30">
                 DEMO FSI
               </span>
             )}
           </div>
-          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 mt-0.5 leading-snug">
-            {hotspot.forest_name || hotspot.facility_name || hotspot.explanation || 'Thermal Anomaly'}
+          <h3 className="text-xs font-extrabold text-slate-900 dark:text-slate-100 mt-1 truncate">
+            {hotspot.forest_name || hotspot.facility_name || hotspot.explanation || 'Thermal Hotspot'}
           </h3>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
-            {hotspot.state ? `${hotspot.district || ''}, ${hotspot.state} • ` : ''}
-            {hotspot.latitude?.toFixed(4)}°N, {hotspot.longitude?.toFixed(4)}°E • {hotspot.timestamp?.slice(0, 16).replace('T', ' ')} UTC
+          <p className="text-[10.5px] text-slate-500 dark:text-slate-400 font-mono mt-0.5 flex items-center gap-1">
+            <Compass className="w-3 h-3 text-slate-400" />
+            <span>{hotspot.latitude?.toFixed(4)}°N, {hotspot.longitude?.toFixed(4)}°E</span>
+            <span>•</span>
+            <Clock className="w-3 h-3 text-slate-400 ml-0.5" />
+            <span>{hotspot.timestamp?.slice(0, 16).replace('T', ' ')} UTC</span>
           </p>
         </div>
 
@@ -220,62 +178,107 @@ export function HotspotCard({
             <button
               type="button"
               onClick={onClose}
-              className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors ml-1"
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-dark-750 transition-colors ml-0.5"
               title="Close popup"
             >
-              <X className="w-4 h-4" />
+              <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
       </div>
 
-      {/* 2. Critical Thermal Spike Section (Appears for genuinely critical events) */}
+      {/* 2. Critical Thermal Spike Section (Appears only for genuinely critical events) */}
       {isCriticalSpike && (
-        <div className="bg-red-950/40 border border-red-500/40 rounded-xl p-3 space-y-2 text-xs">
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2.5 space-y-1.5 text-xs">
           <div className="flex items-center justify-between">
-            <span className="font-bold text-red-400 uppercase tracking-wider flex items-center gap-1.5">
-              <ShieldAlert className="w-4 h-4 text-red-500" />
+            <span className="font-bold text-red-500 dark:text-red-400 uppercase tracking-wider flex items-center gap-1.5">
+              <ShieldAlert className="w-3.5 h-3.5 text-red-500" />
               <span>Critical Thermal Spike</span>
             </span>
-            <span className="text-[10px] font-mono text-red-300 font-bold">
+            <span className="text-[10px] font-mono text-red-400 font-bold">
               Z-Score: +{hotspot.z_score || '4.5'}σ
             </span>
           </div>
-          <div className="text-slate-300 space-y-0.5 font-mono text-[11px]">
-            <div><strong>Facility:</strong> {hotspot.facility_name || 'Registered Industrial Complex'}</div>
-            <div><strong>Current FRP:</strong> <span className="text-red-400 font-bold">{hotspot.frp} MW</span></div>
-            <div><strong>Normal Baseline:</strong> {hotspot.baseline_mean_frp || '27.7'} MW</div>
+          <div className="text-slate-300 font-mono text-[10.5px] flex justify-between">
+            <span>Current FRP: <strong className="text-red-400">{hotspot.frp} MW</strong></span>
+            <span>Baseline: {hotspot.baseline_mean_frp || '27.7'} MW</span>
           </div>
         </div>
       )}
 
-      {/* 3. Large Forest Fire Alert Banner */}
-      {hotspot.large_forest_fire && (
-        <div className="bg-rose-500/15 border border-rose-500/40 rounded-lg p-2 flex items-center gap-2 text-xs text-rose-600 dark:text-rose-400 font-bold">
-          <AlertOctagon className="w-4 h-4 text-rose-500 animate-pulse flex-shrink-0" />
-          <span>LARGE FOREST FIRE EXCURSION (High Intensity Spatial Cluster)</span>
+      {/* 3. Telemetry Grouped 4-Cell Grid */}
+      <div className="bg-slate-50 dark:bg-dark-900/80 border border-slate-200 dark:border-dark-700/80 rounded-lg p-2.5 text-xs space-y-2">
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider block font-medium">Radiative Power</span>
+            <span className="text-sm font-extrabold text-sky-600 dark:text-sky-300 font-mono">{hotspot.frp} MW</span>
+          </div>
+          <div>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider block font-medium">Brightness Temp</span>
+            <span className="text-sm font-extrabold text-amber-600 dark:text-amber-300 font-mono">
+              {hotspot.brightness_temp ? `${hotspot.brightness_temp} K` : 'Nominal'}
+            </span>
+          </div>
+          <div>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider block font-medium">Persistence</span>
+            <span className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 font-mono truncate block">
+              {hotspot.active_days ? `${hotspot.active_days} active day(s)` : (hotspot.fire_status || 'Single Pass')}
+            </span>
+          </div>
+          <div>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider block font-medium">Telemetry Source</span>
+            <span className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 font-mono truncate block">
+              {hotspot.source || 'NASA_FIRMS'}
+            </span>
+          </div>
         </div>
-      )}
 
-      {/* 4. Smart Explainable Risk Score Card */}
-      <div className="bg-slate-50 dark:bg-dark-900/85 border border-slate-200 dark:border-slate-800/80 rounded-xl p-3 space-y-2 text-xs shadow-sm">
+        {/* Eco-Zone / Location Subtext */}
+        <div className="pt-1.5 border-t border-slate-200 dark:border-dark-700/60 flex justify-between items-center text-[10.5px]">
+          <span className="text-slate-500 dark:text-slate-400">Context:</span>
+          <span className="font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[200px]">
+            {hotspot.forest_type || hotspot.facility_category || hotspot.land_context || (hotspot.state ? `${hotspot.district || ''}, ${hotspot.state}` : 'Unassigned')}
+          </span>
+        </div>
+      </div>
+
+      {/* 4. WHY CLASSIFIED Section */}
+      <div className="bg-slate-50 dark:bg-dark-900/80 border border-slate-200 dark:border-dark-700/80 rounded-lg p-2.5 text-xs space-y-1.5">
+        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+          <HelpCircle className="w-3 h-3 text-sky-500" />
+          <span>Why Classified ({hotspot.classification})</span>
+        </div>
+        <p className="text-[11px] text-slate-700 dark:text-slate-300 leading-snug">
+          {hotspot.explanation || riskExplanation}
+        </p>
+        {hotspot.reasons && hotspot.reasons.length > 0 && (
+          <ul className="space-y-0.5 pt-1 text-[10.5px] text-slate-600 dark:text-slate-400 font-mono list-disc list-inside">
+            {hotspot.reasons.slice(0, 3).map((r, i) => (
+              <li key={i} className="truncate">{r}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* 5. Smart Risk Score Section */}
+      <div className="bg-slate-50 dark:bg-dark-900/80 border border-slate-200 dark:border-dark-700/80 rounded-lg p-2.5 space-y-2 text-xs">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <Gauge className="w-3.5 h-3.5 text-sky-500" />
-            <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+            <span className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
               Smart Risk Score
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="font-mono font-extrabold text-sm" style={{ color: getRiskColor(riskScore) }}>
-              {riskScore} <span className="text-[10px] text-slate-400 font-normal">/ 100</span>
+            <span className="font-mono font-extrabold text-xs" style={{ color: getRiskColor(riskScore) }}>
+              {riskScore} <span className="text-[9px] text-slate-400 font-normal">/ 100</span>
             </span>
             <RiskBadge level={riskLevel} />
           </div>
         </div>
 
-        {/* Visual Progress Bar */}
-        <div className="w-full bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+        {/* Progress Bar */}
+        <div className="w-full bg-slate-200 dark:bg-dark-800 h-1.5 rounded-full overflow-hidden">
           <div
             className="h-full rounded-full transition-all duration-500"
             style={{
@@ -285,32 +288,27 @@ export function HotspotCard({
           />
         </div>
 
-        {/* Short Human-Readable Explanation */}
-        <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed pt-0.5">
-          {riskExplanation}
-        </p>
-
-        {/* Contributing Factors Breakdown Toggle */}
+        {/* Contributing Factors Toggle */}
         {Object.keys(riskBreakdown).length > 0 && (
-          <div className="pt-1 border-t border-slate-200 dark:border-slate-800/60">
+          <div className="pt-0.5">
             <button
               type="button"
               onClick={() => setShowRiskBreakdown(!showRiskBreakdown)}
-              className="text-[10.5px] font-semibold text-slate-500 dark:text-slate-400 hover:text-sky-500 flex items-center justify-between w-full transition-colors"
+              className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 hover:text-sky-500 flex items-center justify-between w-full transition-colors"
             >
               <span className="flex items-center gap-1">
                 <Layers className="w-3 h-3 text-sky-500" />
-                <span>Contributing Factor Points</span>
+                <span>Risk Breakdown</span>
               </span>
-              <span className="font-mono text-[9px]">
-                {showRiskBreakdown ? '▲ Hide' : '▼ Breakdown'}
+              <span className="font-mono text-[9px] text-sky-500">
+                {showRiskBreakdown ? '▲ Hide' : '▼ View Points'}
               </span>
             </button>
 
             {showRiskBreakdown && (
-              <div className="mt-2 bg-white dark:bg-dark-850 rounded-lg p-2 border border-slate-200 dark:border-slate-800/70 space-y-1 animate-fadeIn">
+              <div className="mt-1.5 bg-white dark:bg-dark-850 rounded p-1.5 border border-slate-200 dark:border-dark-700 space-y-0.5">
                 {Object.entries(riskBreakdown).map(([factor, pts]) => (
-                  <div key={factor} className="flex justify-between items-center text-[10.5px]">
+                  <div key={factor} className="flex justify-between items-center text-[10px]">
                     <span className="text-slate-600 dark:text-slate-400">{factor}:</span>
                     <span className="font-mono font-bold text-sky-600 dark:text-sky-400">+{pts}</span>
                   </div>
@@ -321,123 +319,108 @@ export function HotspotCard({
         )}
       </div>
 
-      {/* 5. Telemetry Grid (Radiance FRP, Brightness Temp, Status, Data Source) */}
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        <div className="bg-slate-50 dark:bg-dark-900/80 border border-slate-200 dark:border-slate-800/60 rounded-lg p-2">
-          <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Radiance (FRP)</span>
-          <span className="text-sm font-bold text-sky-600 dark:text-sky-300 font-mono">{hotspot.frp} MW</span>
-        </div>
-        <div className="bg-slate-50 dark:bg-dark-900/80 border border-slate-200 dark:border-slate-800/60 rounded-lg p-2">
-          <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Brightness Temp</span>
-          <span className="text-sm font-bold text-amber-600 dark:text-amber-300 font-mono">
-            {hotspot.brightness_temp ? `${hotspot.brightness_temp} K` : 'N/A'}
-          </span>
-        </div>
-        <div className="bg-slate-50 dark:bg-dark-900/80 border border-slate-200 dark:border-slate-800/60 rounded-lg p-2">
-          <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Fire Status / Persistence</span>
-          <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 font-mono truncate block">
-            {hotspot.fire_status || (hotspot.active_days ? `${hotspot.active_days} observation day(s)` : 'Active Pass')}
-          </span>
-        </div>
-        <div className="bg-slate-50 dark:bg-dark-900/80 border border-slate-200 dark:border-slate-800/60 rounded-lg p-2">
-          <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Data Source</span>
-          <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 font-mono">
-            {hotspot.source || 'NASA_FIRMS'}
-          </span>
-        </div>
-      </div>
-
-      {/* 6. Forest Context / Land Attribution Card */}
-      <div className="bg-slate-50 dark:bg-dark-900/80 border border-slate-200 dark:border-slate-800/60 rounded-lg p-2.5 text-xs space-y-1">
-        <div className="flex justify-between">
-          <span className="text-slate-500 dark:text-slate-400">Context / Eco-Zone:</span>
-          <span className="font-medium text-slate-800 dark:text-slate-200 truncate max-w-[190px]">
-            {hotspot.forest_type || hotspot.facility_category || hotspot.land_context || 'Unassigned'}
-          </span>
-        </div>
-        {hotspot.district && (
-          <div className="flex justify-between">
-            <span className="text-slate-500 dark:text-slate-400">Forest Division:</span>
-            <span className="font-mono text-emerald-600 dark:text-emerald-400">{hotspot.district} ({hotspot.state})</span>
-          </div>
-        )}
-        {(hotspot.facility_name || ['GAS_FLARE', 'PERSISTENT_INDUSTRIAL', 'MINING_ACTIVITY', 'INDUSTRIAL_FIRE'].includes(hotspot.classification)) && (
-          <div className="pt-1.5 border-t border-slate-200 dark:border-slate-800/60">
+      {/* 6. Contextual Emergency Response Section (Expandable via [Respond] action) */}
+      {isOpenRespond && (
+        <div className="bg-slate-50 dark:bg-dark-900/90 border border-red-500/30 rounded-lg p-2.5 space-y-2 text-xs animate-fadeIn">
+          <div className="flex justify-between items-center pb-1.5 border-b border-slate-200 dark:border-dark-700 text-[10.5px]">
+            <span className="text-slate-600 dark:text-slate-400 font-medium">
+              National Emergency: <strong className="text-red-500 font-mono">112</strong>
+            </span>
             <button
               type="button"
-              onClick={() => onViewFingerprint && onViewFingerprint(hotspot.facility_name || `${hotspot.latitude?.toFixed(2)},${hotspot.longitude?.toFixed(2)}`)}
-              className="w-full py-1.5 px-2 bg-slate-200/80 hover:bg-slate-300 dark:bg-dark-850 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded font-semibold text-[10.5px] flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+              onClick={handleToggleMapResources}
+              className="px-2 py-0.5 rounded border border-slate-200 dark:border-dark-700 hover:bg-slate-200 dark:hover:bg-dark-750 text-slate-700 dark:text-slate-300 flex items-center gap-1 text-[9.5px] transition-colors"
             >
-              <Activity className="w-3 h-3 text-sky-500" />
-              <span>View Facility Thermal Fingerprint</span>
+              {showingTemporaryResources ? (
+                <>
+                  <EyeOff className="w-3 h-3 text-amber-500" />
+                  <span>Hide On Map</span>
+                </>
+              ) : (
+                <>
+                  <Eye className="w-3 h-3 text-sky-500" />
+                  <span>Show On Map</span>
+                </>
+              )}
             </button>
           </div>
-        )}
-      </div>
 
-      {/* 7. Emergency Dispatch Route (Always available on all hotspots) */}
-      <div className="bg-slate-100 dark:bg-dark-900/90 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1">
-            <Truck className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
-            <span>Emergency Dispatch Route</span>
-          </span>
-          <span className="text-[10px] text-slate-500 font-mono">OpenRouteService</span>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleCalculateRoute}
-          disabled={loadingRoute}
-          className={`w-full py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
-            activeRoute
-              ? 'bg-rose-600 hover:bg-rose-500 text-white'
-              : 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white shadow-md'
-          }`}
-        >
-          {loadingRoute ? (
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Calculating road route...
-            </span>
-          ) : activeRoute ? (
-            <>
-              <X className="w-3.5 h-3.5" />
-              <span>Clear Emergency Route</span>
-            </>
+          {loadingTriage ? (
+            <div className="py-3 text-center text-slate-400">
+              <div className="w-3.5 h-3.5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto mb-1" />
+              <span className="text-[10px]">Locating safety infrastructure...</span>
+            </div>
           ) : (
-            <>
-              <Navigation className="w-3.5 h-3.5" />
-              <span>Calculate First-Responder Route</span>
-            </>
+            <div className="space-y-1.5">
+              {getResourceList().map(({ key, label }) => {
+                const res = nearest[key];
+                if (!res) return null;
+                return (
+                  <div key={key} className="bg-white dark:bg-dark-850 p-1.5 rounded border border-slate-200 dark:border-dark-700 flex justify-between items-center text-[10.5px]">
+                    <div className="truncate pr-1">
+                      <div className="text-[9.5px] font-bold text-slate-500 uppercase">{label}</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 truncate">{res.name}</div>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <span className="font-mono text-[10px] text-amber-500 font-bold">{res.distance_km} km</span>
+                      {res.contact && (
+                        <a
+                          href={`tel:${res.contact}`}
+                          className="p-1 rounded bg-slate-100 dark:bg-dark-750 hover:text-sky-400 transition-colors"
+                          title={`Call ${res.contact}`}
+                        >
+                          <PhoneCall className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
-        </button>
 
-        {activeRoute && activeRoute.route && (
-          <div className="bg-white dark:bg-dark-950/80 border border-amber-300 dark:border-amber-500/30 rounded-lg p-2.5 space-y-1.5 text-xs">
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500 dark:text-slate-400">Nearest Base:</span>
-              <span className="font-semibold text-slate-800 dark:text-slate-200 text-right truncate max-w-[170px]">
-                {activeRoute.origin_depot?.name}
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500 dark:text-slate-400">Road Distance:</span>
-              <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">{activeRoute.route.distance_km} km</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500 dark:text-slate-400">Estimated Response Time:</span>
-              <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">{activeRoute.route.duration_minutes} mins</span>
-            </div>
-          </div>
+          {/* Quick Route Calculation Inside Respond */}
+          <button
+            type="button"
+            onClick={handleCalculateRoute}
+            disabled={loadingRoute}
+            className={`w-full py-1.5 px-2 rounded-md text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all ${
+              activeRoute
+                ? 'bg-rose-600 text-white hover:bg-rose-500'
+                : 'bg-gradient-to-r from-amber-600 to-orange-600 text-white hover:from-amber-500 hover:to-orange-500 shadow-sm'
+            }`}
+          >
+            {loadingRoute ? (
+              <span>Calculating road route...</span>
+            ) : activeRoute ? (
+              <>
+                <X className="w-3 h-3" />
+                <span>Clear Route ({activeRoute.route?.distance_km} km)</span>
+              </>
+            ) : (
+              <>
+                <Navigation className="w-3 h-3" />
+                <span>Calculate Dispatch Route</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* 7. Action Footer Bar ([Investigate / Fingerprint], [Respond], [Dossier]) */}
+      <div className="pt-2 border-t border-slate-200 dark:border-dark-700/80 flex items-center gap-1.5">
+        {hasFacilityProfile && (
+          <button
+            type="button"
+            onClick={() => onViewFingerprint && onViewFingerprint(facilityIdentifier)}
+            className="flex-1 py-1.5 px-2 bg-slate-100 hover:bg-slate-200 dark:bg-dark-800 dark:hover:bg-dark-750 border border-slate-300 dark:border-dark-700 text-slate-800 dark:text-slate-200 rounded-lg font-bold text-[10.5px] flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+          >
+            <Activity className="w-3 h-3 text-sky-500" />
+            <span>Fingerprint</span>
+          </button>
         )}
 
-        {routeError && <p className="text-[11px] text-red-500 dark:text-red-400">{routeError}</p>}
-      </div>
-
-      {/* 8. [RESPOND] Action Button (Shown for High-Risk / Critical / Wildfire events) */}
-      {canRespond && (
-        <div className="border-t border-slate-200 dark:border-slate-800 pt-2.5 space-y-2">
+        {canRespond && (
           <button
             type="button"
             onClick={() => {
@@ -447,188 +430,27 @@ export function HotspotCard({
                 loadTriageData();
               }
             }}
-            className={`w-full py-2 px-3 rounded-xl font-extrabold text-xs flex items-center justify-center gap-2 shadow-md transition-all ${
+            className={`flex-1 py-1.5 px-2 rounded-lg font-bold text-[10.5px] flex items-center justify-center gap-1.5 transition-all shadow-sm ${
               isOpenRespond
-                ? 'bg-slate-800 text-slate-200 hover:bg-slate-700 dark:bg-slate-700 dark:text-white'
-                : 'bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white shadow-red-600/30'
+                ? 'bg-dark-700 text-white'
+                : 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/20'
             }`}
           >
-            <ShieldAlert className="w-4 h-4" />
-            <span>{isOpenRespond ? 'Close Emergency Response' : 'RESPOND (Nearby Safety Resources)'}</span>
-            <span className="ml-1 text-[10px] opacity-75">
-              {isOpenRespond ? '▲' : '▼'}
-            </span>
+            <ShieldAlert className="w-3 h-3" />
+            <span>{isOpenRespond ? 'Close' : 'Respond'}</span>
           </button>
+        )}
 
-          {/* Emergency Response Expanded Section */}
-          {isOpenRespond && (
-            <div className="bg-slate-50 dark:bg-dark-900/90 border border-slate-200 dark:border-slate-800 rounded-xl p-3 space-y-3 text-xs animate-fadeIn">
-              {loadingTriage ? (
-                <div className="py-4 text-center text-slate-400">
-                  <div className="w-4 h-4 border-2 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto mb-1.5" />
-                  <span>Loading nearby emergency infrastructure...</span>
-                </div>
-              ) : (
-                <>
-                  {/* Event & Helpline Header */}
-                  <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-800 text-[11px]">
-                    <span className="text-slate-600 dark:text-slate-400">
-                      Emergency Helpline: <strong className="text-red-500 font-mono">112</strong>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleToggleMapResources}
-                      className="px-2 py-0.5 rounded border border-slate-200 dark:border-slate-800 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center gap-1 text-[10px] transition-colors"
-                    >
-                      {showingTemporaryResources ? (
-                        <>
-                          <EyeOff className="w-3 h-3 text-amber-500" />
-                          <span>Hide on Map</span>
-                        </>
-                      ) : (
-                        <>
-                          <Eye className="w-3 h-3 text-sky-500" />
-                          <span>Show on Map</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Resource Cards */}
-                  <div className="space-y-2">
-                    {getResourceList().map(({ key, label }) => {
-                      const res = nearest[key];
-                      return (
-                        <div
-                          key={key}
-                          className="bg-white dark:bg-dark-850 border border-slate-200 dark:border-slate-800/80 rounded-lg p-2.5 space-y-1 shadow-sm"
-                        >
-                          <div className="flex justify-between items-start">
-                            <span className="font-semibold text-slate-700 dark:text-slate-300 text-[11px]">
-                              {label}
-                            </span>
-                            {res && (
-                              <span className="font-mono text-sky-600 dark:text-sky-400 font-bold text-[11px]">
-                                {res.distance_km} km
-                              </span>
-                            )}
-                          </div>
-
-                          {res ? (
-                            <>
-                              <div className="font-semibold text-slate-900 dark:text-slate-100 text-xs truncate">
-                                {res.name}
-                              </div>
-                              <div className="flex justify-between items-center pt-1 border-t border-slate-100 dark:border-slate-800/60 text-[10px] text-slate-500">
-                                <span>ETA: <strong className="text-emerald-600 dark:text-emerald-400 font-mono">{res.estimated_travel_time_mins} min</strong></span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleRouteToResource(res)}
-                                  disabled={loadingRoute}
-                                  className="px-2 py-0.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold flex items-center gap-1 transition-colors"
-                                >
-                                  <Navigation className="w-2.5 h-2.5" />
-                                  <span>Route</span>
-                                </button>
-                              </div>
-                            </>
-                          ) : (
-                            <div className="text-[10px] text-slate-400 italic">
-                              No verified nearby resource found
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Evacuation / Safe-Location Card */}
-                  <div className="border-t border-slate-200 dark:border-slate-800 pt-2 space-y-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setShowEvacSection(!showEvacSection)}
-                      className="text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:text-sky-500 flex items-center justify-between w-full"
-                    >
-                      <span>Evacuation / Safe Locations</span>
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        {showEvacSection ? '▲' : '▼'}
-                      </span>
-                    </button>
-
-                    {showEvacSection && (
-                      <div className="bg-white dark:bg-dark-850 rounded-lg p-2.5 border border-slate-200 dark:border-slate-800/80 text-[11px]">
-                        {nearest.shelter ? (
-                          <div className="space-y-1">
-                            <div className="font-semibold text-slate-900 dark:text-slate-100">
-                              {nearest.shelter.name}
-                            </div>
-                            <p className="text-slate-500 dark:text-slate-400 text-[10px]">
-                              {nearest.shelter.notes || 'Designated disaster relief center'} • Distance: {nearest.shelter.distance_km} km
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => handleRouteToResource(nearest.shelter)}
-                              className="w-full mt-1 py-1 rounded bg-slate-100 dark:bg-dark-900 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 font-semibold text-[10px] flex items-center justify-center gap-1"
-                            >
-                              <Navigation className="w-3 h-3 text-sky-500" />
-                              <span>Route to Evacuation Point</span>
-                            </button>
-                          </div>
-                        ) : (
-                          <p className="text-slate-400 italic text-[10.5px]">
-                            No verified evacuation point available for this location.
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Official Safety Guidance (SOP) */}
-                  {sop.title && (
-                    <div className="bg-sky-50 dark:bg-dark-850 rounded-lg p-2.5 border border-sky-200 dark:border-sky-950 text-[10.5px] text-slate-700 dark:text-slate-300 space-y-1">
-                      <strong className="text-sky-700 dark:text-sky-400 block font-semibold">
-                        SOP: {sop.title}
-                      </strong>
-                      <p className="leading-snug text-slate-600 dark:text-slate-400">
-                        {sop.actions && sop.actions[0]}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Dossier Action */}
-                  <div className="pt-1 flex justify-between items-center border-t border-slate-200 dark:border-slate-800 text-[10px]">
-                    <span className="text-slate-400">DEMO SAFETY DATA (NDMA / FSI)</span>
-                    <a
-                      href={getDossierDownloadUrl(hotspot.id || 'jamnagar-refinery', 'demo')}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-2 py-1 rounded bg-slate-200 hover:bg-slate-300 dark:bg-dark-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold flex items-center gap-1 transition-colors"
-                    >
-                      <FileText className="w-3 h-3 text-slate-600 dark:text-slate-400" />
-                      <span>Generate Dossier</span>
-                    </a>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 9. Why Classified? Decision Reasoning Card */}
-      <div className="bg-sky-50 dark:bg-slate-900/90 border border-sky-200 dark:border-sky-950/80 rounded-lg p-3 space-y-1.5">
-        <div className="flex items-center gap-1 text-[11px] font-bold text-sky-700 dark:text-sky-400 uppercase tracking-wider">
-          <CheckCircle2 className="w-3.5 h-3.5" />
-          <span>Why Classified? (Decision Logic)</span>
-        </div>
-        <ul className="space-y-1 text-[11px] text-slate-700 dark:text-slate-300">
-          {reasons.map((reason, index) => (
-            <li key={index} className="flex items-start gap-1.5 leading-relaxed">
-              <span className="text-sky-600 dark:text-sky-400 font-bold mt-0.5">•</span>
-              <span>{reason}</span>
-            </li>
-          ))}
-        </ul>
+        <a
+          href={getDossierDownloadUrl('event', hotspot.id || `${hotspot.latitude},${hotspot.longitude}`)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="py-1.5 px-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-dark-800 dark:hover:bg-dark-750 border border-slate-300 dark:border-dark-700 text-slate-700 dark:text-slate-300 rounded-lg font-semibold text-[10.5px] flex items-center gap-1 transition-colors"
+          title="Download Intelligence Dossier (PDF/JSON)"
+        >
+          <FileText className="w-3 h-3 text-slate-400" />
+          <span>Dossier</span>
+        </a>
       </div>
     </div>
   );
