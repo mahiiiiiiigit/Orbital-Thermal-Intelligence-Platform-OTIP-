@@ -48,6 +48,9 @@ export function MapView({
   const ffdrLayerRef = useRef(null);
   const heatLayerRef = useRef(null);
 
+  // Track marker clicks to prevent map background click from closing popup immediately
+  const lastMarkerClickTimeRef = useRef(0);
+
   // Dynamic Map-Anchored Overlay Position State
   const [popupPos, setPopupPos] = useState(null);
 
@@ -61,11 +64,14 @@ export function MapView({
       zoomControl: false,
     });
 
-    // Reposition zoom controls to bottom right
+    // Zoom control
     L.control.zoom({ position: 'bottomright' }).addTo(initialMap);
 
-    // Map canvas click closes selected hotspot popup
+    // Map background click closes selected hotspot popup
     initialMap.on('click', () => {
+      if (Date.now() - lastMarkerClickTimeRef.current < 400) {
+        return; // Ignore if a marker was just clicked
+      }
       if (onSelectHotspot) {
         onSelectHotspot(null);
       }
@@ -143,7 +149,14 @@ export function MapView({
 
   // 4. Compute Smart Map-Anchored Popup Position (Zero-Clipping Calculation)
   const updatePopupPosition = useCallback(() => {
-    if (!map || !selectedHotspot || selectedHotspot.latitude == null || selectedHotspot.longitude == null) {
+    if (!map || !selectedHotspot) {
+      setPopupPos(null);
+      return;
+    }
+
+    const lat = Number(selectedHotspot.latitude);
+    const lon = Number(selectedHotspot.longitude);
+    if (isNaN(lat) || isNaN(lon)) {
       setPopupPos(null);
       return;
     }
@@ -151,13 +164,21 @@ export function MapView({
     const container = mapContainerRef.current;
     if (!container) return;
 
-    const containerWidth = container.clientWidth;
-    const containerHeight = container.clientHeight;
-    const point = map.latLngToContainerPoint([selectedHotspot.latitude, selectedHotspot.longitude]);
+    const containerWidth = container.clientWidth || window.innerWidth;
+    const containerHeight = container.clientHeight || window.innerHeight;
+
+    let point;
+    try {
+      point = map.latLngToContainerPoint([lat, lon]);
+    } catch {
+      return;
+    }
+
+    if (!point || isNaN(point.x) || isNaN(point.y)) return;
 
     const cardEl = cardRef.current;
-    const cardWidth = cardEl ? cardEl.offsetWidth : 370;
-    const cardHeight = cardEl ? cardEl.offsetHeight : 440;
+    const cardWidth = cardEl && cardEl.offsetWidth > 100 ? cardEl.offsetWidth : 370;
+    const cardHeight = cardEl && cardEl.offsetHeight > 100 ? cardEl.offsetHeight : 440;
 
     const MARGIN = 16;
     const PIN_OFFSET = 12;
@@ -190,22 +211,14 @@ export function MapView({
     // Pointer arrow horizontal anchor relative to card
     const arrowLeft = Math.max(20, Math.min(point.x - left, cardWidth - 20));
 
-    // Marker visibility check
-    const isVisible = (
-      point.x >= -cardWidth &&
-      point.x <= containerWidth + cardWidth &&
-      point.y >= -cardHeight &&
-      point.y <= containerHeight + cardHeight
-    );
-
     setPopupPos({
-      left,
-      top,
+      left: Math.round(left),
+      top: Math.round(top),
       isAbove,
-      arrowLeft,
+      arrowLeft: Math.round(arrowLeft),
       markerX: point.x,
       markerY: point.y,
-      isVisible,
+      isVisible: true,
     });
   }, [map, selectedHotspot]);
 
@@ -221,21 +234,29 @@ export function MapView({
     // Auto-pan slightly if marker is too close to container boundary
     const container = mapContainerRef.current;
     if (container) {
-      const pt = map.latLngToContainerPoint([selectedHotspot.latitude, selectedHotspot.longitude]);
-      const padTop = 130;
-      const padBottom = 130;
-      const padSide = 150;
-      let dx = 0;
-      let dy = 0;
+      const lat = Number(selectedHotspot.latitude);
+      const lon = Number(selectedHotspot.longitude);
+      if (!isNaN(lat) && !isNaN(lon)) {
+        try {
+          const pt = map.latLngToContainerPoint([lat, lon]);
+          const padTop = 130;
+          const padBottom = 130;
+          const padSide = 150;
+          let dx = 0;
+          let dy = 0;
 
-      if (pt.x < padSide) dx = pt.x - padSide;
-      else if (pt.x > container.clientWidth - padSide) dx = pt.x - (container.clientWidth - padSide);
+          if (pt.x < padSide) dx = pt.x - padSide;
+          else if (pt.x > container.clientWidth - padSide) dx = pt.x - (container.clientWidth - padSide);
 
-      if (pt.y < padTop) dy = pt.y - padTop;
-      else if (pt.y > container.clientHeight - padBottom) dy = pt.y - (container.clientHeight - padBottom);
+          if (pt.y < padTop) dy = pt.y - padTop;
+          else if (pt.y > container.clientHeight - padBottom) dy = pt.y - (container.clientHeight - padBottom);
 
-      if (Math.abs(dx) > 12 || Math.abs(dy) > 12) {
-        map.panBy([dx, dy], { animate: true, duration: 0.35 });
+          if (Math.abs(dx) > 12 || Math.abs(dy) > 12) {
+            map.panBy([dx, dy], { animate: true, duration: 0.35 });
+          }
+        } catch {
+          // Ignore
+        }
       }
     }
   }, [map, selectedHotspot, updatePopupPosition]);
@@ -248,9 +269,9 @@ export function MapView({
       updatePopupPosition();
     };
 
-    map.on('move zoom viewreset resize', handleMapMovement);
+    map.on('move zoom viewreset resize moveend zoomend', handleMapMovement);
 
-    // Watch for card size changes (e.g. expanding emergency response or breakdown sections)
+    // Watch for card size changes
     let cardResizeObs = null;
     if (window.ResizeObserver && cardRef.current) {
       cardResizeObs = new ResizeObserver(() => {
@@ -260,7 +281,7 @@ export function MapView({
     }
 
     return () => {
-      map.off('move zoom viewreset resize', handleMapMovement);
+      map.off('move zoom viewreset resize moveend zoomend', handleMapMovement);
       if (cardResizeObs) cardResizeObs.disconnect();
     };
   }, [map, selectedHotspot, updatePopupPosition]);
@@ -383,40 +404,42 @@ export function MapView({
         );
 
         circle.on('click', (e) => {
-          L.DomEvent.stopPropagation(e);
+          lastMarkerClickTimeRef.current = Date.now();
+          if (e?.originalEvent) e.originalEvent.stopPropagation();
+          if (L.DomEvent) L.DomEvent.stopPropagation(e);
           if (onSelectCluster) onSelectCluster(cluster);
         });
         clustersLayerRef.current.push(circle);
       });
     }
 
-    // Render Hotspot Markers (Standard, Hybrid & Forest Risk modes)
-    if (mapMode === 'standard' || mapMode === 'hybrid' || mapMode === 'forest_risk') {
-      hotspots.forEach((hotspot) => {
-        const isSpike = hotspot.classification === 'INDUSTRIAL_FIRE' || (hotspot.frp >= 90);
-        const color = TAXONOMY_COLORS[hotspot.classification] || '#94a3b8';
+    // Render Hotspot Markers (Standard, Hybrid, Forest Risk & Thermal modes)
+    hotspots.forEach((hotspot) => {
+      const isSpike = hotspot.classification === 'INDUSTRIAL_FIRE' || (hotspot.frp >= 90);
+      const color = TAXONOMY_COLORS[hotspot.classification] || '#94a3b8';
 
-        const marker = L.circleMarker([hotspot.latitude, hotspot.longitude], {
-          radius: isSpike ? 9 : (hotspot.classification === 'GAS_FLARE' || hotspot.classification === 'PERSISTENT_INDUSTRIAL' ? 7 : 5),
-          color: isSpike ? '#ffffff' : color,
-          fillColor: color,
-          fillOpacity: mapMode === 'hybrid' ? 0.95 : 0.85,
-          weight: isSpike ? 2 : 1.2,
-        }).addTo(map);
+      const marker = L.circleMarker([hotspot.latitude, hotspot.longitude], {
+        radius: isSpike ? 9 : (hotspot.classification === 'GAS_FLARE' || hotspot.classification === 'PERSISTENT_INDUSTRIAL' ? 7 : 5),
+        color: isSpike ? '#ffffff' : color,
+        fillColor: color,
+        fillOpacity: mapMode === 'thermal' ? 0.35 : (mapMode === 'hybrid' ? 0.95 : 0.85),
+        weight: isSpike ? 2 : 1.2,
+      }).addTo(map);
 
-        marker.bindTooltip(
-          `<strong>${hotspot.classification}</strong> • ${hotspot.frp} MW<br/>${hotspot.forest_name || hotspot.facility_name || hotspot.state || ''}`,
-          { sticky: true, direction: 'top' }
-        );
+      marker.bindTooltip(
+        `<strong>${hotspot.classification}</strong> • ${hotspot.frp} MW<br/>${hotspot.forest_name || hotspot.facility_name || hotspot.state || ''}`,
+        { sticky: true, direction: 'top' }
+      );
 
-        marker.on('click', (e) => {
-          L.DomEvent.stopPropagation(e);
-          if (onSelectHotspot) onSelectHotspot(hotspot);
-        });
-
-        markersLayerRef.current.push(marker);
+      marker.on('click', (e) => {
+        lastMarkerClickTimeRef.current = Date.now();
+        if (e?.originalEvent) e.originalEvent.stopPropagation();
+        if (L.DomEvent) L.DomEvent.stopPropagation(e);
+        if (onSelectHotspot) onSelectHotspot(hotspot);
       });
-    }
+
+      markersLayerRef.current.push(marker);
+    });
 
     // Render Anomaly Spikes Pulse Icons
     alerts.forEach((alt) => {
@@ -434,14 +457,16 @@ export function MapView({
           direction: 'top',
         })
         .on('click', (e) => {
-          L.DomEvent.stopPropagation(e);
+          lastMarkerClickTimeRef.current = Date.now();
+          if (e?.originalEvent) e.originalEvent.stopPropagation();
+          if (L.DomEvent) L.DomEvent.stopPropagation(e);
           if (onSelectHotspot) onSelectHotspot(alt);
         });
 
       alertsLayerRef.current.push(alertMarker);
     });
 
-  }, [map, hotspots, clusters, alerts, ffdrGrid, temporarySafetyResources, mapMode]);
+  }, [map, hotspots, clusters, alerts, ffdrGrid, temporarySafetyResources, mapMode, onSelectHotspot, onSelectCluster]);
 
   // 6. Render Active Emergency Dispatch Route Polyline
   useEffect(() => {
@@ -470,7 +495,7 @@ export function MapView({
       dashArray: '6, 6',
     }).addTo(map);
 
-    // Origin Base Marker (clean text badge, no emojis)
+    // Origin Base Marker
     const depot = activeRoute.origin_depot;
     let depotMarker = null;
     if (depot) {
@@ -500,7 +525,7 @@ export function MapView({
       <div ref={mapContainerRef} className="w-full h-full" />
 
       {/* Map-Anchored Smart Overlay Detail Card */}
-      {selectedHotspot && popupPos && popupPos.isVisible && (
+      {selectedHotspot && popupPos && (
         <div
           ref={cardRef}
           className="absolute z-[1000] w-[370px] max-w-[calc(100%-32px)] transition-all duration-75 pointer-events-auto shadow-2xl"
@@ -517,12 +542,12 @@ export function MapView({
           {/* Pointer Caret / Triangle Arrow */}
           {popupPos.isAbove ? (
             <div
-              className="absolute -bottom-2 w-3.5 h-3.5 bg-white/95 dark:bg-dark-850/95 border-r border-b border-slate-300 dark:border-slate-700/80 transform rotate-45 pointer-events-none shadow-md"
+              className="absolute -bottom-2 w-3.5 h-3.5 bg-dark-900 border-r border-b border-dark-700/90 transform rotate-45 pointer-events-none shadow-md"
               style={{ left: `${popupPos.arrowLeft - 7}px` }}
             />
           ) : (
             <div
-              className="absolute -top-2 w-3.5 h-3.5 bg-white/95 dark:bg-dark-850/95 border-l border-t border-slate-300 dark:border-slate-700/80 transform rotate-45 pointer-events-none shadow-md"
+              className="absolute -top-2 w-3.5 h-3.5 bg-dark-900 border-l border-t border-dark-700/90 transform rotate-45 pointer-events-none shadow-md"
               style={{ left: `${popupPos.arrowLeft - 7}px` }}
             />
           )}
