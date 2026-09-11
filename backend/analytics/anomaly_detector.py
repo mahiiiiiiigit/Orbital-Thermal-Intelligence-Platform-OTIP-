@@ -1,5 +1,6 @@
 from statistics import mean, pstdev
 from typing import Any, Dict, List
+from backend.analytics.site_resolver import resolve_site_name
 
 
 def detect_anomalies(hotspots: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -21,10 +22,8 @@ def detect_anomalies(hotspots: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             continue
 
         facility_name = hotspot.get("facility_name")
-        if not facility_name:
-            lat = round(float(hotspot["latitude"]), 2)
-            lon = round(float(hotspot["longitude"]), 2)
-            facility_name = f"Site ({lat}, {lon})"
+        if not facility_name or facility_name.startswith("Site ("):
+            facility_name = resolve_site_name(float(hotspot["latitude"]), float(hotspot["longitude"]))
 
         facilities.setdefault(facility_name, []).append(hotspot)
 

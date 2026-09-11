@@ -32,7 +32,11 @@ def generate_dossier(
     styles = getSampleStyleSheet()
 
     average_frp = (
-        round(sum(float(record["frp"]) for record in history) / len(history), 2)
+        round(
+            sum(float(record.get("frp", record.get("mean_frp", 0.0))) for record in history)
+            / len(history),
+            2,
+        )
         if history
         else cluster.get("mean_frp", 0.0)
     )

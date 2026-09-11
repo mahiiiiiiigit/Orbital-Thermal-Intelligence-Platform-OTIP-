@@ -1,7 +1,8 @@
 import React from 'react';
 import { TAXONOMY_CLASSES } from '../constants/taxonomy';
 import { FrpTrendChart } from './FrpTrendChart';
-import { AlertTriangle, Info } from 'lucide-react';
+import { TimelineSlider } from './TimelineSlider';
+import { AlertTriangle, Info, Truck, X, Navigation } from 'lucide-react';
 
 export function Sidebar({
   hotspots = [],
@@ -12,6 +13,12 @@ export function Sidebar({
   onSelectFilterClass,
   activeDate,
   stats = { totalHotspots: 0, totalClusters: 0, totalAlerts: 0, avgFrp: 0 },
+  timelineDates = [],
+  timelineIndex = 0,
+  onChangeTimelineIndex,
+  activeRoute = null,
+  onSetRoute,
+  onSelectHotspot,
 }) {
   // Compute counts per taxonomy class
   const classCounts = React.useMemo(() => {
@@ -31,6 +38,63 @@ export function Sidebar({
           <div className="bg-sky-500/10 border border-sky-500/25 rounded-lg p-2 flex items-start gap-1.5 text-xs text-sky-300">
             <Info className="w-3.5 h-3.5 text-sky-400 flex-shrink-0 mt-0.5" />
             <p className="text-[10px] leading-tight font-medium">{notice}</p>
+          </div>
+        )}
+
+        {/* ACTIVE EMERGENCY DISPATCH ROUTE STATUS */}
+        {activeRoute && activeRoute.route && (
+          <div className="bg-gradient-to-b from-amber-950/40 to-dark-850 border border-amber-500/50 rounded-lg p-3 space-y-2.5 shadow-lg animate-fadeIn">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Truck className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                <span>ACTIVE DISPATCH ROUTE</span>
+              </span>
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase">
+                En Route
+              </span>
+            </div>
+
+            <div className="space-y-1.5 text-xs">
+              <div className="bg-dark-900/90 rounded-md p-2 border border-dark-750 space-y-1">
+                <div className="flex justify-between items-start text-[11px]">
+                  <span className="text-slate-400">Origin Depot:</span>
+                  <span className="font-semibold text-slate-100 text-right truncate max-w-[150px]">
+                    {activeRoute.origin_depot?.name || 'Emergency Base'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-start text-[11px]">
+                  <span className="text-slate-400">Incident Target:</span>
+                  <span className="font-semibold text-slate-100 text-right truncate max-w-[150px]">
+                    {activeRoute.target_event?.forest_name || activeRoute.target_event?.facility_name || (activeRoute.target_coords ? `${activeRoute.target_coords.latitude?.toFixed(3)}°N, ${activeRoute.target_coords.longitude?.toFixed(3)}°E` : 'Incident Site')}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5 font-mono text-[11px]">
+                <div className="bg-dark-900/90 border border-dark-750 rounded p-1.5 text-center">
+                  <span className="text-[9.5px] text-slate-400 block font-sans">Distance</span>
+                  <span className="font-bold text-emerald-400 text-xs">
+                    {activeRoute.route.distance_km} km
+                  </span>
+                </div>
+                <div className="bg-dark-900/90 border border-dark-750 rounded p-1.5 text-center">
+                  <span className="text-[9.5px] text-slate-400 block font-sans">Est. Duration</span>
+                  <span className="font-bold text-sky-400 text-xs">
+                    {activeRoute.route.duration_minutes} min
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Clear Route Button */}
+            <button
+              type="button"
+              onClick={() => onSetRoute && onSetRoute(null)}
+              className="w-full py-1.5 px-2 bg-red-600/20 hover:bg-red-600/30 text-red-300 hover:text-red-200 border border-red-500/40 rounded-md text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Clear Route / Exit Response</span>
+            </button>
           </div>
         )}
 
@@ -152,6 +216,15 @@ export function Sidebar({
             </div>
           )}
         </div>
+
+        {/* 4. TIMELINE SCRUBBING SECTION */}
+        {timelineDates && timelineDates.length > 0 && (
+          <TimelineSlider
+            dates={timelineDates}
+            currentIndex={timelineIndex}
+            onChangeIndex={onChangeTimelineIndex}
+          />
+        )}
       </div>
     </aside>
   );

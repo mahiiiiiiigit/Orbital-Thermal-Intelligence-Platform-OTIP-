@@ -82,6 +82,7 @@ export async function fetchNearestSafetyResources({
   classification = 'UNCLASSIFIED',
   frp = 25.0,
   riskScore = 50.0,
+  radiusKm = 10.0,
 }) {
   const params = new URLSearchParams();
   params.set('lat', String(lat));
@@ -89,6 +90,9 @@ export async function fetchNearestSafetyResources({
   params.set('classification', classification);
   params.set('frp', String(frp));
   params.set('risk_score', String(riskScore));
+  if (radiusKm) {
+    params.set('radius_km', String(radiusKm));
+  }
 
   const res = await fetch(`/api/v1/safety/nearest?${params.toString()}`);
   if (!res.ok) {
@@ -113,8 +117,8 @@ export async function fetchAlerts({ mode = 'auto', source = 'VIIRS_SNPP_NRT' } =
   return res.json();
 }
 
-export function getDossierDownloadUrl(clusterId = 'jamnagar-refinery', mode = 'demo') {
-  return `/api/v1/reports/${clusterId}/dossier?mode=${mode}`;
+export function getDossierDownloadUrl(clusterId = 'jamnagar-refinery', mode = 'auto') {
+  return `/api/v1/reports/${encodeURIComponent(clusterId)}/dossier?mode=${mode}`;
 }
 
 export async function fetchEmergencyRoute(lat, lon, startLat = null, startLon = null) {

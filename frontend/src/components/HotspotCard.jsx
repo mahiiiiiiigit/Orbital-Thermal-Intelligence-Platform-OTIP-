@@ -29,6 +29,7 @@ export function HotspotCard({
   onClose,
   onViewFingerprint,
   onInvestigateEvent,
+  mode = 'auto',
 }) {
   const [loadingRoute, setLoadingRoute] = useState(false);
   const [routeError, setRouteError] = useState(null);
@@ -130,8 +131,12 @@ export function HotspotCard({
     setRouteError(null);
     try {
       const data = await fetchEmergencyRoute(hotspot.latitude, hotspot.longitude, res.latitude, res.longitude);
-      if (data && data.origin_depot) {
-        data.origin_depot.name = res.name;
+      if (data) {
+        if (data.origin_depot) {
+          data.origin_depot.name = res.name;
+        }
+        data.target_event = hotspot;
+        data.destination_resource = res;
       }
       onSetRoute(data);
     } catch (err) {
@@ -147,7 +152,9 @@ export function HotspotCard({
     if (showingTemporaryResources) {
       onShowTemporaryResources([]);
     } else {
-      const list = Object.values(nearest).filter(Boolean);
+      const list = triageData?.facilities && triageData.facilities.length > 0
+        ? triageData.facilities
+        : Object.values(nearest).filter(Boolean);
       onShowTemporaryResources(list);
     }
   };
@@ -167,7 +174,7 @@ export function HotspotCard({
   );
 
   return (
-    <div className="bg-dark-900/95 border border-dark-700/90 rounded-xl p-4 space-y-3 shadow-2xl backdrop-blur-md text-slate-200 select-text transition-colors duration-200 w-[370px] max-h-[85vh] overflow-y-auto">
+    <div className="bg-dark-900/95 border border-dark-700/90 rounded-xl p-4 space-y-3 shadow-2xl backdrop-blur-md text-slate-200 select-text transition-colors duration-200 w-full max-h-full overflow-y-auto overscroll-contain">
       {/* 1. Header: Classification, Confidence, Facility, Lat/Lon, Date, and Close Button */}
       <div className="flex items-start justify-between gap-2 border-b border-dark-700/80 pb-2.5">
         <div className="flex-1 pr-1">
@@ -540,7 +547,7 @@ export function HotspotCard({
         </button>
 
         <a
-          href={getDossierDownloadUrl(hotspot.id || 'jamnagar-refinery', 'demo')}
+          href={getDossierDownloadUrl(hotspot.cluster_id || hotspot.id || 'jamnagar-refinery', mode)}
           target="_blank"
           rel="noreferrer"
           className="flex-1 py-1.5 px-3 bg-dark-850 hover:bg-dark-800 border border-dark-700 text-slate-300 hover:text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5 text-center"

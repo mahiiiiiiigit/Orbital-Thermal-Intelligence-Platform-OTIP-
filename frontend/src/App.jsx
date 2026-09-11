@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
 import { MapView } from './components/MapView';
-import { TimelineSlider } from './components/TimelineSlider';
 import { ThermalLegend } from './components/ThermalLegend';
 import {
   fetchHotspots,
@@ -77,6 +76,17 @@ export function App() {
     setSelectedCluster(cluster);
     setTemporarySafetyResources([]);
     setActiveRoute(null);
+  }, []);
+
+  // Set active emergency dispatch route and manage UI state separation
+  const handleSetRoute = useCallback((routeData) => {
+    setActiveRoute(routeData);
+    if (routeData) {
+      // Automatically close large information card and modal dialogs so route is completely unobstructed
+      setSelectedHotspot(null);
+      setSelectedCluster(null);
+      setSelectedInvestigationEvent(null);
+    }
   }, []);
 
   // Load FSI FFDR Grid on startup
@@ -201,10 +211,17 @@ export function App() {
         onRefresh={() => loadData(true)}
         loading={loading}
         stats={stats}
+        alerts={alerts}
+        hotspots={allHotspots}
+        onSelectNotification={(item) => {
+          if (item) {
+            setSelectedInvestigationEvent(item);
+          }
+        }}
       />
 
       {/* Main Workspace Layout */}
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className="flex flex-1 overflow-hidden relative z-0">
         {/* Left Analytics Overview Sidebar */}
         <Sidebar
           hotspots={allHotspots}
@@ -215,6 +232,12 @@ export function App() {
           onSelectFilterClass={setFilterClass}
           activeDate={activeDate}
           stats={stats}
+          timelineDates={timelineDates}
+          timelineIndex={timelineIndex}
+          onChangeTimelineIndex={setTimelineIndex}
+          activeRoute={activeRoute}
+          onSetRoute={handleSetRoute}
+          onSelectHotspot={handleSelectHotspot}
         />
 
         {/* Center / Dominant GIS Map Area */}
@@ -232,36 +255,15 @@ export function App() {
             selectedHotspot={selectedHotspot}
             selectedCluster={selectedCluster}
             activeRoute={activeRoute}
-            onSetRoute={setActiveRoute}
+            onSetRoute={handleSetRoute}
             onSelectHotspot={handleSelectHotspot}
             onSelectCluster={handleSelectCluster}
             onShowTemporaryResources={setTemporarySafetyResources}
             showingTemporaryResources={temporarySafetyResources.length > 0}
             onViewFingerprint={(facility) => setSelectedFingerprintFacility(facility)}
             onInvestigateEvent={(event) => setSelectedInvestigationEvent(event)}
+            mode={mode}
           />
-
-          {/* Facility Thermal Fingerprint Modal Dialog (FACILITY-CENTRIC) */}
-          {selectedFingerprintFacility && (
-            <FacilityFingerprintModal
-              facilityIdentifier={selectedFingerprintFacility}
-              mode={mode}
-              onClose={() => setSelectedFingerprintFacility(null)}
-              onInvestigateEvent={(event) => setSelectedInvestigationEvent(event)}
-            />
-          )}
-
-          {/* Incident Investigation Modal Dialog (EVENT-CENTRIC) */}
-          {selectedInvestigationEvent && (
-            <EventInvestigationModal
-              event={selectedInvestigationEvent}
-              mode={mode}
-              onClose={() => setSelectedInvestigationEvent(null)}
-              onSetRoute={setActiveRoute}
-              onShowTemporaryResources={setTemporarySafetyResources}
-              showingTemporaryResources={temporarySafetyResources.length > 0}
-            />
-          )}
 
           {/* Floating Intensity Legend (Bottom Right) */}
           {mapMode !== 'standard' && (
@@ -269,19 +271,30 @@ export function App() {
               <ThermalLegend mode={mapMode} />
             </div>
           )}
-
-          {/* Floating Timeline Scrubbing Controls (Bottom Center) */}
-          {timelineDates.length > 1 && (
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000]">
-              <TimelineSlider
-                dates={timelineDates}
-                currentIndex={timelineIndex}
-                onChangeIndex={(idx) => setTimelineIndex(idx)}
-              />
-            </div>
-          )}
         </main>
       </div>
+
+      {/* Facility Thermal Fingerprint Modal Dialog (FACILITY-CENTRIC) */}
+      {selectedFingerprintFacility && (
+        <FacilityFingerprintModal
+          facilityIdentifier={selectedFingerprintFacility}
+          mode={mode}
+          onClose={() => setSelectedFingerprintFacility(null)}
+          onInvestigateEvent={(event) => setSelectedInvestigationEvent(event)}
+        />
+      )}
+
+      {/* Incident Investigation Modal Dialog (EVENT-CENTRIC) */}
+      {selectedInvestigationEvent && (
+        <EventInvestigationModal
+          event={selectedInvestigationEvent}
+          mode={mode}
+          onClose={() => setSelectedInvestigationEvent(null)}
+          onSetRoute={handleSetRoute}
+          onShowTemporaryResources={setTemporarySafetyResources}
+          showingTemporaryResources={temporarySafetyResources.length > 0}
+        />
+      )}
     </div>
   );
 }

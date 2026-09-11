@@ -17,6 +17,7 @@ const TYPE_COLORS = {
   police: '#3b82f6',
   ambulance: '#f59e0b',
   shelter: '#8b5cf6',
+  disaster_management: '#10b981',
 };
 
 export function MapView({
@@ -38,6 +39,7 @@ export function MapView({
   showingTemporaryResources = false,
   onViewFingerprint,
   onInvestigateEvent,
+  mode = 'auto',
 }) {
   const mapContainerRef = useRef(null);
   const cardRef = useRef(null);
@@ -216,6 +218,9 @@ export function MapView({
     // Pointer arrow horizontal anchor relative to card
     const arrowLeft = Math.max(20, Math.min(point.x - left, cardWidth - 20));
 
+    // Maximum height the card is allowed to expand to without overflowing bottom of viewport
+    const availableMaxHeight = Math.max(160, Math.floor(containerHeight - top - MARGIN));
+
     setPopupPos({
       left: Math.round(left),
       top: Math.round(top),
@@ -223,6 +228,7 @@ export function MapView({
       arrowLeft: Math.round(arrowLeft),
       markerX: point.x,
       markerY: point.y,
+      maxHeight: availableMaxHeight,
       isVisible: true,
     });
   }, [map, activeAnchor]);
@@ -290,6 +296,29 @@ export function MapView({
       if (cardResizeObs) cardResizeObs.disconnect();
     };
   }, [map, activeAnchor, updatePopupPosition]);
+
+  // Disable Leaflet map scroll and drag propagation on the popup card element so internal scrolling works
+  useEffect(() => {
+    const cardEl = cardRef.current;
+    if (!cardEl) return;
+
+    if (L && L.DomEvent) {
+      L.DomEvent.disableScrollPropagation(cardEl);
+      L.DomEvent.disableClickPropagation(cardEl);
+    }
+
+    const stopScroll = (e) => {
+      e.stopPropagation();
+    };
+
+    cardEl.addEventListener('wheel', stopScroll, { passive: true });
+    cardEl.addEventListener('touchmove', stopScroll, { passive: true });
+
+    return () => {
+      cardEl.removeEventListener('wheel', stopScroll);
+      cardEl.removeEventListener('touchmove', stopScroll);
+    };
+  }, [activeAnchor, popupPos?.isVisible]);
 
   // 5. Render Overlays according to mapMode, telemetry, and temporary resources
   useEffect(() => {
@@ -566,17 +595,34 @@ export function MapView({
         iconSize: [100, 20],
         iconAnchor: [50, 10],
       });
-      depotMarker = L.marker([depot.latitude, depot.longitude], { icon: depotIcon })
+      depotMarker = L.marker([depot.latitude, depot.longitude], { icon: depotIcon, zIndexOffset: 950 })
         .addTo(map)
         .bindTooltip(`<strong>${depot.name}</strong><br/>Emergency Response Dispatch Point`, { permanent: false, direction: 'top' });
     }
 
+    // Destination Incident Target Marker
+    const targetCoords = activeRoute.target_coords || (coords.length > 0 ? { latitude: coords[coords.length - 1][0], longitude: coords[coords.length - 1][1] } : null);
+    let targetMarker = null;
+    if (targetCoords) {
+      const targetName = activeRoute.target_event?.forest_name || activeRoute.target_event?.facility_name || 'Thermal Anomaly Target';
+      const targetIcon = L.divIcon({
+        className: '',
+        html: '<div style="background:#ef4444; color:#fff; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:10px; border:1px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,0.5);">INCIDENT TARGET</div>',
+        iconSize: [100, 20],
+        iconAnchor: [50, 10],
+      });
+      targetMarker = L.marker([targetCoords.latitude, targetCoords.longitude], { icon: targetIcon, zIndexOffset: 950 })
+        .addTo(map)
+        .bindTooltip(`<strong>${targetName}</strong><br/>Emergency Incident Destination`, { permanent: false, direction: 'top' });
+    }
+
     routeLayersRef.current = [glowLine, routeLine];
     if (depotMarker) routeLayersRef.current.push(depotMarker);
+    if (targetMarker) routeLayersRef.current.push(targetMarker);
 
     // Fit map bounds to show complete route
     const bounds = L.latLngBounds(coords);
-    map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+    map.fitBounds(bounds, { padding: [60, 60], maxZoom: 14 });
 
   }, [map, activeRoute]);
 
@@ -585,15 +631,40 @@ export function MapView({
       {/* Map DOM Canvas */}
       <div ref={mapContainerRef} className="w-full h-full" />
 
+      {/* Floating Map-Edge Active Dispatch Status Pill */}
+      {activeRoute && activeRoute.route && (
+        <div className="absolute top-4 left-4 z-[1000] bg-dark-900/95 border border-amber-500/40 rounded-xl p-2.5 shadow-2xl backdrop-blur-md flex items-center gap-3 text-xs max-w-md animate-fadeIn">
+          <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 font-bold text-amber-400 text-[11px] truncate">
+              <span>ACTIVE DISPATCH ROUTE</span>
+              <span className="text-slate-400 font-normal">•</span>
+              <span className="text-slate-200 font-mono">{activeRoute.route.distance_km} km ({activeRoute.route.duration_minutes} min)</span>
+            </div>
+            <div className="text-[10px] text-slate-400 truncate">
+              From: <strong className="text-slate-200">{activeRoute.origin_depot?.name || 'Emergency Base'}</strong>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onSetRoute && onSetRoute(null)}
+            className="px-2.5 py-1 bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 text-red-300 hover:text-red-200 font-bold rounded-lg text-xs transition-colors flex-shrink-0"
+            title="Clear Route / Exit Emergency Response"
+          >
+            Clear Route
+          </button>
+        </div>
+      )}
+
       {/* Map-Anchored Smart Overlay Detail Card (Hotspot or Cluster) */}
       {activeAnchor && popupPos && (
         <div
           ref={cardRef}
-          className="absolute z-[1000] w-[370px] max-w-[calc(100%-32px)] transition-all duration-75 pointer-events-auto shadow-2xl"
+          className="absolute z-[1000] w-[370px] max-w-[calc(100%-32px)] flex flex-col transition-all duration-75 pointer-events-auto shadow-2xl"
           style={{
             left: `${popupPos.left}px`,
             top: `${popupPos.top}px`,
-            maxHeight: 'calc(100% - 32px)',
+            maxHeight: popupPos.maxHeight ? `${popupPos.maxHeight}px` : 'calc(100% - 32px)',
           }}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
@@ -623,6 +694,7 @@ export function MapView({
               onClose={() => onSelectHotspot && onSelectHotspot(null)}
               onViewFingerprint={onViewFingerprint}
               onInvestigateEvent={onInvestigateEvent}
+              mode={mode}
             />
           ) : selectedCluster ? (
             <ClusterCard
@@ -630,6 +702,7 @@ export function MapView({
               onClose={() => onSelectCluster && onSelectCluster(null)}
               onViewFingerprint={onViewFingerprint}
               onInvestigateEvent={onInvestigateEvent}
+              mode={mode}
             />
           ) : null}
         </div>

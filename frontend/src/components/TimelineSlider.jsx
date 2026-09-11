@@ -30,60 +30,98 @@ export function TimelineSlider({
 
   const currentDate = dates[currentIndex] || dates[dates.length - 1];
 
+  const handlePrev = () => {
+    if (currentIndex > 0) {
+      onChangeIndex(currentIndex - 1);
+    }
+  };
+
+  const handleNext = () => {
+    if (currentIndex < dates.length - 1) {
+      onChangeIndex(currentIndex + 1);
+    }
+  };
+
+  const handleTogglePlay = () => {
+    if (!isPlaying && currentIndex >= dates.length - 1) {
+      onChangeIndex(0);
+    }
+    setIsPlaying(!isPlaying);
+  };
+
   return (
-    <div className="bg-white/95 dark:bg-dark-850/90 border border-slate-200 dark:border-slate-800 rounded-xl p-3 shadow-2xl backdrop-blur-md flex items-center gap-3 w-full max-w-xl transition-colors duration-200">
-      {/* Playback controls */}
-      <div className="flex items-center gap-1">
+    <div className="bg-dark-850 border border-dark-700/80 rounded-lg p-3 space-y-2.5">
+      {/* Header with Title & Current Selected Date */}
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+          <Calendar className="w-3.5 h-3.5 text-sky-400" />
+          <span>TIMELINE SCRUBBING</span>
+        </div>
+        <span className="font-mono text-[11px] font-bold text-sky-400 bg-sky-500/10 border border-sky-500/25 px-2 py-0.5 rounded">
+          {currentDate}
+        </span>
+      </div>
+
+      {/* Playback Controls (Previous, Play/Pause, Next) */}
+      <div className="flex items-center gap-1.5">
         <button
           type="button"
-          onClick={() => onChangeIndex(0)}
-          className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          title="Reset to Day 1"
+          onClick={handlePrev}
+          disabled={currentIndex <= 0}
+          className="p-1.5 rounded-md bg-dark-800 hover:bg-dark-750 text-slate-300 hover:text-white border border-dark-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          title="Previous date"
         >
-          <SkipBack className="w-4 h-4" />
+          <SkipBack className="w-3.5 h-3.5" />
         </button>
 
         <button
           type="button"
-          onClick={() => setIsPlaying(!isPlaying)}
-          className="p-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white shadow-md shadow-sky-600/30 transition-colors"
-          title={isPlaying ? 'Pause Timeline' : 'Play Timeline'}
+          onClick={handleTogglePlay}
+          className={`flex-1 py-1 px-2.5 rounded-md font-semibold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-colors ${
+            isPlaying
+              ? 'bg-amber-600 hover:bg-amber-500 text-white'
+              : 'bg-sky-600 hover:bg-sky-500 text-white shadow-sky-600/20'
+          }`}
+          title={isPlaying ? 'Pause timeline playback' : 'Auto-play timeline'}
         >
-          {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+          {isPlaying ? (
+            <>
+              <Pause className="w-3.5 h-3.5" />
+              <span>Pause</span>
+            </>
+          ) : (
+            <>
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>Play</span>
+            </>
+          )}
         </button>
 
         <button
           type="button"
-          onClick={() => onChangeIndex(dates.length - 1)}
-          className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          title="Fast-forward to Latest"
+          onClick={handleNext}
+          disabled={currentIndex >= dates.length - 1}
+          className="p-1.5 rounded-md bg-dark-800 hover:bg-dark-750 text-slate-300 hover:text-white border border-dark-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          title="Next date"
         >
-          <SkipForward className="w-4 h-4" />
+          <SkipForward className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      {/* Slider Track */}
-      <div className="flex-1 space-y-1">
-        <div className="flex justify-between items-center text-[11px]">
-          <div className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
-            <Calendar className="w-3 h-3 text-sky-500 dark:text-sky-400" />
-            <span>Timeline Scrubbing:</span>
-          </div>
-          <span className="font-mono font-bold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800/40 px-2 py-0.5 rounded">
-            {currentDate}
-          </span>
-        </div>
+      {/* Slider Track & Start/End Dates */}
+      <div className="space-y-1">
         <input
           type="range"
           min="0"
-          max={dates.length - 1}
+          max={dates.length > 1 ? dates.length - 1 : 0}
           value={currentIndex}
+          disabled={dates.length <= 1}
           onChange={(e) => onChangeIndex(Number(e.target.value))}
-          className="w-full h-1.5 bg-slate-300 dark:bg-slate-700 rounded-lg cursor-pointer appearance-none"
+          className="w-full h-1.5 bg-dark-750 rounded-lg cursor-pointer appearance-none accent-sky-500 disabled:opacity-40"
         />
-        <div className="flex justify-between text-[9px] text-slate-500 font-mono">
-          <span>{dates[0]}</span>
-          <span>{dates[dates.length - 1]}</span>
+        <div className="flex justify-between text-[9px] text-slate-400 font-mono">
+          <span title={`Start Date: ${dates[0]}`}>{dates[0]}</span>
+          <span title={`End Date: ${dates[dates.length - 1]}`}>{dates[dates.length - 1]}</span>
         </div>
       </div>
     </div>

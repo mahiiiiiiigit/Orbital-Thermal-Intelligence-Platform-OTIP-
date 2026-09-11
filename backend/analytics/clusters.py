@@ -1,4 +1,5 @@
 from typing import Any, Dict, List
+from backend.analytics.site_resolver import resolve_site_name
 
 
 def build_persistent_clusters(hotspots: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -19,10 +20,8 @@ def build_persistent_clusters(hotspots: List[Dict[str, Any]]) -> List[Dict[str, 
             continue
 
         facility_name = hotspot.get("facility_name")
-        if not facility_name:
-            lat_approx = round(float(hotspot["latitude"]), 2)
-            lon_approx = round(float(hotspot["longitude"]), 2)
-            facility_name = f"Unregistered Site ({lat_approx}, {lon_approx})"
+        if not facility_name or "Unregistered Site" in facility_name or facility_name.startswith("Site ("):
+            facility_name = resolve_site_name(float(hotspot["latitude"]), float(hotspot["longitude"]))
 
         if facility_name not in grouped_hotspots:
             grouped_hotspots[facility_name] = []

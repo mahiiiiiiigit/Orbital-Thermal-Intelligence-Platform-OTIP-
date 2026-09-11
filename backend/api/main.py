@@ -27,10 +27,13 @@ from backend.analytics.routing import (
     find_nearest_emergency_depot,
 )
 from backend.analytics.safety_infrastructure import (
+    fetch_osm_safety_facilities,
     find_nearest_safety_resources,
     get_all_safety_resources,
     get_recommended_response_sop,
 )
+from backend.analytics.facility_registry import KNOWN_FACILITIES
+from backend.analytics.spatial import distance_metres
 from backend.analytics.thermal_fingerprint import build_facility_thermal_profile
 from backend.reports.dossier_generator import generate_dossier
 
@@ -423,15 +426,20 @@ def get_nearest_safety_resources(
     classification: str = Query("UNCLASSIFIED", description="Thermal classification class"),
     frp: float = Query(25.0, description="Radiative Power (MW)"),
     risk_score: float = Query(50.0, description="Risk Score (0-100)"),
+    radius_km: float = Query(10.0, ge=1.0, le=100.0, description="Search radius in kilometers (5-10 km default)"),
 ):
     """
     Returns incident response triage packet containing nearest Fire, Hospital, Police,
-    Ambulance, and Shelter facilities, national emergency numbers (112), and classification SOPs.
+    Ambulance, and Shelter facilities from live OpenStreetMap Overpass data, sorted by distance,
+    with national emergency numbers (112) and classification SOPs.
     """
-    nearest_map = find_nearest_safety_resources(latitude=lat, longitude=lon)
+    osm_result = fetch_osm_safety_facilities(latitude=lat, longitude=lon, radius_km=radius_km)
+    nearest_map = osm_result.get("nearest_by_type", {})
+    facilities_list = osm_result.get("facilities", [])
     sop = get_recommended_response_sop(classification=classification, risk_level="CRITICAL" if risk_score >= 80 else "HIGH", frp=frp)
 
     return {
+        "site_name": osm_result.get("site_name"),
         "event": {
             "classification": classification,
             "frp": frp,
@@ -439,7 +447,12 @@ def get_nearest_safety_resources(
             "latitude": lat,
             "longitude": lon,
         },
+        "search_radius_km": osm_result.get("search_radius_km", radius_km),
+        "auto_expanded": osm_result.get("auto_expanded", False),
+        "total_facilities": len(facilities_list),
+        "facilities": facilities_list,
         "nearest_resources": nearest_map,
+        "nearest": nearest_map,
         "emergency_contacts": {
             "national_emergency": "112",
             "fire_service": "101",
@@ -449,8 +462,8 @@ def get_nearest_safety_resources(
             "state_emergency_helpline": "1070",
         },
         "recommended_response": sop,
-        "source_label": "DEMO SAFETY DATA (District Disaster Management Plans)",
-        "is_demo": True,
+        "source_label": "OpenStreetMap Overpass API & District Disaster Management Registry",
+        "is_demo": False,
     }
 
 
@@ -511,39 +524,179 @@ def show_thermal_map():
     return FileResponse(map_file)
 
 
+def _resolve_cluster_or_target(
+    cluster_id: str,
+    hotspots: List[Dict[str, Any]],
+    clusters: List[Dict[str, Any]],
+) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Resolves a target cluster, hotspot, facility, or coordinate pair for dossier generation.
+    Returns: (target_cluster_dict, relevant_hotspot_history)
+    """
+    clean_target = cluster_id.strip()
+    norm_target = (
+        clean_target.lower()
+        .replace(" ", "-")
+        .replace("(", "")
+        .replace(")", "")
+        .replace(",", "")
+    )
+
+    # 1. Exact match in clusters by cluster_id
+    for cluster in clusters:
+        cid = str(cluster.get("cluster_id", ""))
+        if cid == clean_target or cid == norm_target or cid.lower() == clean_target.lower():
+            fac_name = cluster.get("facility_name")
+            history = [h for h in hotspots if h.get("facility_name") == fac_name]
+            return cluster, history
+
+    # 2. Case-insensitive facility_name match in clusters
+    for cluster in clusters:
+        fac_name = str(cluster.get("facility_name", "")).lower()
+        if fac_name and (fac_name == clean_target.lower() or norm_target in fac_name.replace(" ", "-")):
+            history = [h for h in hotspots if h.get("facility_name") == cluster.get("facility_name")]
+            return cluster, history
+
+    # 3. Direct match on hotspot ID (e.g., 'firms-58', 'jamnagar-refinery-day-00')
+    target_hotspot = next(
+        (h for h in hotspots if str(h.get("id", "")).lower() == clean_target.lower()),
+        None,
+    )
+    if target_hotspot:
+        fac_name = target_hotspot.get("facility_name")
+        # If this hotspot belongs to a known cluster in this dataset, return that cluster
+        if fac_name:
+            matching_cluster = next((c for c in clusters if c.get("facility_name") == fac_name), None)
+            if matching_cluster:
+                history = [h for h in hotspots if h.get("facility_name") == fac_name]
+                return matching_cluster, history
+
+        # Otherwise synthesize a cluster record directly from the hotspot
+        display_name = (
+            fac_name
+            or target_hotspot.get("facility_category")
+            or target_hotspot.get("land_context")
+            or target_hotspot.get("forest_name")
+            or f"Thermal Target ({round(float(target_hotspot.get('latitude', 0.0)), 3)}, {round(float(target_hotspot.get('longitude', 0.0)), 3)})"
+        )
+        frp_val = round(float(target_hotspot.get("frp") or 0.0), 2)
+        synthesized_cluster = {
+            "cluster_id": str(target_hotspot.get("id", clean_target)),
+            "facility_name": display_name,
+            "classification": target_hotspot.get("classification", "UNCLASSIFIED"),
+            "confidence_level": target_hotspot.get("confidence_level") or target_hotspot.get("confidence", "HIGH"),
+            "explanation": target_hotspot.get("explanation") or f"Operational thermal detection recorded at {display_name}.",
+            "reasons": target_hotspot.get("reasons") or [target_hotspot.get("explanation", "Satellite thermal detection")],
+            "latitude": target_hotspot.get("latitude"),
+            "longitude": target_hotspot.get("longitude"),
+            "active_days": target_hotspot.get("active_days", 1),
+            "detection_count": 1,
+            "mean_frp": frp_val,
+            "peak_frp": frp_val,
+            "risk_score": round(float(target_hotspot.get("risk_score", 50.0)), 1),
+            "risk_level": target_hotspot.get("risk_level", "MEDIUM"),
+            "risk_breakdown": target_hotspot.get("risk_breakdown", {}),
+            "risk_explanation": target_hotspot.get("risk_explanation", ""),
+            "frp": frp_val,
+        }
+        history = [h for h in hotspots if fac_name and h.get("facility_name") == fac_name]
+        if not history:
+            history = [target_hotspot]
+        return synthesized_cluster, history
+
+    # 4. Coordinate match (e.g., '22.47,70.06')
+    if "," in clean_target:
+        try:
+            parts = [float(p.strip()) for p in clean_target.split(",")]
+            if len(parts) == 2:
+                target_pt = {"latitude": parts[0], "longitude": parts[1]}
+                # Try finding closest cluster within 15km
+                closest_cluster = None
+                min_c_dist = float("inf")
+                for c in clusters:
+                    d = distance_metres(target_pt, {"latitude": c["latitude"], "longitude": c["longitude"]})
+                    if d < min_c_dist and d <= 15000:
+                        min_c_dist = d
+                        closest_cluster = c
+                if closest_cluster:
+                    fac_name = closest_cluster.get("facility_name")
+                    history = [h for h in hotspots if h.get("facility_name") == fac_name]
+                    return closest_cluster, history
+
+                # Try finding closest hotspot within 15km
+                closest_h = None
+                min_h_dist = float("inf")
+                for h in hotspots:
+                    d = distance_metres(target_pt, {"latitude": h["latitude"], "longitude": h["longitude"]})
+                    if d < min_h_dist and d <= 15000:
+                        min_h_dist = d
+                        closest_h = h
+                if closest_h:
+                    return _resolve_cluster_or_target(str(closest_h.get("id")), hotspots, clusters)
+        except Exception:
+            pass
+
+    # 5. Check known facilities registry
+    for fac in KNOWN_FACILITIES:
+        fac_id = fac.get("facility_id", "").lower().strip()
+        fac_name = fac.get("name", "").lower().strip()
+        if fac_id == clean_target.lower() or fac_name == clean_target.lower() or norm_target in fac_id:
+            matched_cluster = next((c for c in clusters if (c.get("facility_name") or "").lower() == fac_name), None)
+            if matched_cluster:
+                history = [h for h in hotspots if h.get("facility_name") == matched_cluster.get("facility_name")]
+                return matched_cluster, history
+            fac_hotspots = [h for h in hotspots if (h.get("facility_name") or "").lower() == fac_name]
+            mean_f = round(sum(float(h.get("frp", 0.0)) for h in fac_hotspots) / len(fac_hotspots), 2) if fac_hotspots else 25.0
+            peak_f = max((float(h.get("frp", 0.0)) for h in fac_hotspots), default=25.0)
+            synthesized_cluster = {
+                "cluster_id": fac.get("facility_id", clean_target),
+                "facility_name": fac.get("name", clean_target),
+                "classification": "PERSISTENT_INDUSTRIAL",
+                "confidence_level": "HIGH",
+                "explanation": f"Registered facility profile for {fac.get('name')}.",
+                "reasons": [f"Known registered facility in {fac.get('state', 'India')}"],
+                "latitude": fac.get("latitude"),
+                "longitude": fac.get("longitude"),
+                "active_days": max(1, len(fac_hotspots)),
+                "detection_count": max(1, len(fac_hotspots)),
+                "mean_frp": mean_f,
+                "peak_frp": peak_f,
+                "risk_score": 50.0,
+                "risk_level": "MEDIUM",
+                "frp": mean_f,
+            }
+            return synthesized_cluster, fac_hotspots
+
+    return None, []
+
+
 @app.get("/api/v1/reports/{cluster_id}/dossier")
 def download_dossier(
     cluster_id: str,
     mode: str = Query("auto", pattern="^(auto|live|demo)$"),
 ):
-    """Generates an official inspection-ready PDF intelligence dossier for a target cluster."""
+    """Generates an official inspection-ready PDF intelligence dossier for a target cluster or hotspot."""
     classified_hotspots, _, _, _ = _get_active_hotspots(mode=mode)
     clusters = build_persistent_clusters(classified_hotspots)
 
-    matching_cluster = next(
-        (cluster for cluster in clusters if cluster["cluster_id"] == cluster_id),
-        None,
+    matching_cluster, facility_history = _resolve_cluster_or_target(
+        cluster_id, classified_hotspots, clusters
     )
 
-    # If not found in current dataset, check demo dataset as fallback
-    if matching_cluster is None and mode != "demo":
-        demo_hotspots = classify_hotspots(generate_hotspots())
-        demo_clusters = build_persistent_clusters(demo_hotspots)
-        matching_cluster = next(
-            (cluster for cluster in demo_clusters if cluster["cluster_id"] == cluster_id),
-            None,
+    # If not found in current dataset, check fallback dataset (auto if demo, demo if auto/live)
+    if matching_cluster is None:
+        fallback_mode = "auto" if mode == "demo" else "demo"
+        fallback_hotspots, _, _, _ = _get_active_hotspots(mode=fallback_mode)
+        fallback_clusters = build_persistent_clusters(fallback_hotspots)
+        matching_cluster, facility_history = _resolve_cluster_or_target(
+            cluster_id, fallback_hotspots, fallback_clusters
         )
         if matching_cluster:
-            classified_hotspots = demo_hotspots
+            classified_hotspots = fallback_hotspots
 
     if matching_cluster is None:
         raise HTTPException(status_code=404, detail=f"Cluster '{cluster_id}' not found")
 
-    facility_history = [
-        hotspot
-        for hotspot in classified_hotspots
-        if hotspot.get("facility_name") == matching_cluster["facility_name"]
-    ]
     if not facility_history:
         facility_history = [matching_cluster]
 
@@ -551,7 +704,8 @@ def download_dossier(
     facility_alerts = [
         alert
         for alert in all_alerts
-        if alert.get("facility_name") == matching_cluster["facility_name"]
+        if alert.get("facility_name") == matching_cluster.get("facility_name")
+        or str(alert.get("id")) == cluster_id
     ]
 
     pdf = generate_dossier(

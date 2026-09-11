@@ -309,7 +309,7 @@ export function FacilityFingerprintModal({
 
   return (
     <div
-      className="fixed inset-0 z-[2000] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn select-text"
+      className="fixed inset-0 z-[9999] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn select-text"
       onClick={onClose}
     >
       <div
