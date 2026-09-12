@@ -26,7 +26,6 @@ export function MapView({
   ffdrGrid = null,
   temporarySafetyResources = [],
   mapMode = 'hybrid', // 'standard' | 'thermal' | 'hybrid' | 'forest_risk'
-  theme = 'dark',
   regionConfig,
   selectedHotspot,
   selectedCluster,
@@ -121,7 +120,7 @@ export function MapView({
     };
   }, []);
 
-  // 2. Manage Dynamic Base Tile Layer (CARTO Dark / Voyager)
+  // 2. Manage Base Tile Layer (CARTO Dark)
   useEffect(() => {
     if (!map) return;
 
@@ -130,8 +129,7 @@ export function MapView({
     }
 
     const cartoKey = import.meta.env.VITE_CARTO_KEY || 'cb1_2jno_1_ef0c23ffe5f8a02710afad82';
-    const tileStyle = theme === 'dark' ? 'dark_all' : 'rastertiles/voyager';
-    const tileUrl = `https://basemaps.cartocdn.com/${tileStyle}/{z}/{x}/{y}.png?key=${cartoKey}`;
+    const tileUrl = `https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png?key=${cartoKey}`;
 
     const newTileLayer = L.tileLayer(tileUrl, {
       attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; NASA FIRMS &copy; Forest Survey of India &copy; OpenRouteService',
@@ -140,7 +138,7 @@ export function MapView({
     }).addTo(map);
 
     baseTileLayerRef.current = newTileLayer;
-  }, [map, theme]);
+  }, [map]);
 
   // 3. Manage Region Pan/Zoom Navigation
   useEffect(() => {
@@ -483,10 +481,35 @@ export function MapView({
         weight: isSpike ? 2 : 1.2,
       }).addTo(map);
 
-      marker.bindTooltip(
-        `<strong>${hotspot.classification}</strong> • ${hotspot.frp} MW<br/>${hotspot.forest_name || hotspot.facility_name || hotspot.state || ''}`,
-        { sticky: true, direction: 'top' }
-      );
+      const frpVal = Number(hotspot.frp) || 0;
+      const locationLabel = hotspot.facility_name || hotspot.forest_name || hotspot.state || `${hotspot.latitude.toFixed(2)}°, ${hotspot.longitude.toFixed(2)}°`;
+      const tempVal = hotspot.brightness ? `${Number(hotspot.brightness).toFixed(0)} K` : (hotspot.bright_ti4 ? `${Number(hotspot.bright_ti4).toFixed(0)} K` : '330 K');
+
+      const tooltipContent = `
+        <div style="background: rgba(17, 23, 34, 0.96); border: 1px solid ${color}60; border-radius: 8px; padding: 7px 10px; font-family: 'Inter', sans-serif; box-shadow: 0 8px 24px rgba(0,0,0,0.6); min-width: 170px; backdrop-filter: blur(8px);">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 3px;">
+            <span style="font-size: 10px; font-family: 'JetBrains Mono', monospace; font-weight: 700; color: ${color}; text-transform: uppercase;">
+              ${(hotspot.classification || 'ANOMALY').replace('_', ' ')}
+            </span>
+            <span style="font-size: 10.5px; font-family: 'JetBrains Mono', monospace; font-weight: 800; color: #f97316;">
+              ${frpVal.toFixed(1)} MW
+            </span>
+          </div>
+          <div style="font-size: 11px; font-weight: 600; color: #f8fafc; margin-bottom: 3px; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+            ${locationLabel}
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 9.5px; font-family: 'JetBrains Mono', monospace; color: #94a3b8; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 3px; margin-top: 3px;">
+            <span>T4: ${tempVal}</span>
+            <span style="color: #38bdf8;">Click for details →</span>
+          </div>
+        </div>
+      `;
+
+      marker.bindTooltip(tooltipContent, {
+        sticky: true,
+        direction: 'top',
+        className: 'custom-hud-tooltip',
+      });
 
       marker.on('click', (e) => {
         lastMarkerClickTimeRef.current = Date.now();

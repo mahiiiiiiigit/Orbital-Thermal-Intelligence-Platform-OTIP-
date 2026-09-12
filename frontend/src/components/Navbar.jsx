@@ -1,5 +1,4 @@
-import React from 'react';
-import { RefreshCw, MapPin, Satellite, Flame, Trees, Sun, Moon, Bell } from 'lucide-react';
+import { RefreshCw, MapPin, Satellite, Flame, Trees, Bell, TrendingUp } from 'lucide-react';
 import { REGIONS, SENSORS } from '../constants/taxonomy';
 
 export function Navbar({
@@ -13,17 +12,24 @@ export function Navbar({
   onSelectSensor,
   mapMode = 'hybrid',
   onSelectMapMode,
-  theme = 'dark',
-  onToggleTheme,
   onRefresh,
   loading = false,
   stats = { totalHotspots: 0, totalClusters: 0, totalAlerts: 0, avgFrp: 0 },
+  onNavigateLanding,
+  onNavigateAlerts,
+  onNavigateAnalytics,
+  currentView = 'dashboard',
 }) {
   return (
     <header className="h-14 bg-dark-900 border-b border-dark-700 px-4 flex items-center justify-between gap-4 z-30 select-none shadow-sm transition-colors duration-200">
       {/* Left: Brand & Ingestion Toggle */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2.5">
+        <button
+          type="button"
+          onClick={onNavigateLanding}
+          className="flex items-center gap-2.5 hover:opacity-90 transition-opacity text-left cursor-pointer"
+          title="Return to Landing Page"
+        >
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-md shadow-orange-600/20">
             <Flame className="w-4.5 h-4.5 text-white" />
           </div>
@@ -35,9 +41,21 @@ export function Navbar({
             </div>
             <span className="text-[10px] text-slate-400 font-medium">Orbital Thermal Intelligence Platform</span>
           </div>
-        </div>
+        </button>
 
         <div className="h-5 w-[1px] bg-dark-700 mx-1 hidden sm:block" />
+
+        {/* Back to Home / Landing Button */}
+        {onNavigateLanding && (
+          <button
+            type="button"
+            onClick={onNavigateLanding}
+            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold text-slate-400 hover:text-white bg-dark-850 hover:bg-dark-750 border border-dark-700 transition-all cursor-pointer"
+            title="Return to Overview / Landing Page"
+          >
+            <span>Overview</span>
+          </button>
+        )}
 
         {/* Live Feed Status Pill */}
         <div className="flex items-center bg-dark-850 border border-dark-700 p-0.5 rounded-lg">
@@ -138,35 +156,46 @@ export function Navbar({
         </button>
       </div>
 
-      {/* Right Controls: Notifications & Theme Toggle */}
+      {/* Right Controls: Analytics & Alerts Button */}
       <div className="flex items-center gap-2">
-        {/* Notifications Icon with Badge */}
-        <button
-          type="button"
-          className="relative p-1.5 rounded-lg bg-dark-850 hover:bg-dark-750 border border-dark-700 transition-all text-slate-300 hover:text-white"
-          title={`${stats.totalAlerts} Critical Events Detected`}
-        >
-          <Bell className="w-4 h-4" />
-          {stats.totalAlerts > 0 && (
-            <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[9px] font-bold flex items-center justify-center font-mono">
-              {stats.totalAlerts}
-            </span>
-          )}
-        </button>
+        {/* Analytics Trends Dashboard Navigation Button */}
+        {onNavigateAnalytics && (
+          <button
+            type="button"
+            onClick={onNavigateAnalytics}
+            className={`relative flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all text-xs font-semibold cursor-pointer ${
+              currentView === 'analytics'
+                ? 'bg-sky-500/20 border-sky-500/50 text-sky-300 shadow-md shadow-sky-500/20'
+                : 'bg-dark-850 hover:bg-dark-750 border-dark-700 text-slate-300 hover:text-white'
+            }`}
+            title="Open Thermal Trends Analytics Dashboard"
+          >
+            <TrendingUp className="w-3.5 h-3.5 text-sky-400" />
+            <span className="hidden sm:inline">Analytics</span>
+          </button>
+        )}
 
-        {/* Theme Toggle */}
-        <button
-          type="button"
-          onClick={onToggleTheme}
-          className="p-1.5 rounded-lg bg-dark-850 hover:bg-dark-750 border border-dark-700 transition-all text-slate-300 hover:text-white"
-          title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-        >
-          {theme === 'dark' ? (
-            <Sun className="w-4 h-4 text-amber-400" />
-          ) : (
-            <Moon className="w-4 h-4 text-slate-300" />
-          )}
-        </button>
+        {/* Alerts & Critical Events Navigation Button */}
+        {onNavigateAlerts && (
+          <button
+            type="button"
+            onClick={onNavigateAlerts}
+            className={`relative flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all text-xs font-semibold cursor-pointer ${
+              currentView === 'alerts'
+                ? 'bg-red-500/20 border-red-500/50 text-red-300 shadow-md shadow-red-500/20'
+                : 'bg-dark-850 hover:bg-dark-750 border-dark-700 text-slate-300 hover:text-white'
+            }`}
+            title="Open Alerts & Critical Events Page"
+          >
+            <Bell className={`w-3.5 h-3.5 ${stats.totalAlerts > 0 ? 'text-red-400 animate-pulse' : ''}`} />
+            <span className="hidden sm:inline">Alerts</span>
+            {stats.totalAlerts > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full bg-red-500 text-white text-[10px] font-bold font-mono">
+                {stats.totalAlerts}
+              </span>
+            )}
+          </button>
+        )}
       </div>
     </header>
   );
