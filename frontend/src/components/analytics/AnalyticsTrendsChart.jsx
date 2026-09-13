@@ -139,8 +139,8 @@ export function AnalyticsTrendsChart({
                 <stop offset="95%" stopColor="#ea580c" stopOpacity={0.0} />
               </linearGradient>
               <linearGradient id="gradientRegionB" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4} />
-                <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.0} />
+                <stop offset="5%" stopColor="#c084fc" stopOpacity={0.4} />
+                <stop offset="95%" stopColor="#c084fc" stopOpacity={0.0} />
               </linearGradient>
             </defs>
 
@@ -156,22 +156,21 @@ export function AnalyticsTrendsChart({
               interval={timeRange === '1Y' ? 4 : timeRange === '90D' ? 8 : timeRange === '30D' ? 2 : 0}
             />
 
-            {/* Left Y-Axis for Hotspot Count / Region A */}
-            {(activeMetric === 'all' || activeMetric === 'hotspots' || isCompareMode) && (
+            {/* Y-Axis: Dynamic based on activeMetric */}
+            {activeMetric === 'hotspots' && (
               <YAxis
                 yAxisId="left"
                 stroke="#38bdf8"
                 fontSize={11}
                 tickLine={false}
                 axisLine={{ stroke: '#334155' }}
+                domain={[0, 'auto']}
               />
             )}
 
-            {/* Right Y-Axis for Mean FRP (MW) */}
-            {(activeMetric === 'all' || activeMetric === 'frp') && !isCompareMode && (
+            {activeMetric === 'frp' && (
               <YAxis
-                yAxisId="right"
-                orientation="right"
+                yAxisId="left"
                 stroke="#f97316"
                 fontSize={11}
                 tickLine={false}
@@ -181,133 +180,159 @@ export function AnalyticsTrendsChart({
               />
             )}
 
+            {activeMetric === 'all' && (
+              <>
+                <YAxis
+                  yAxisId="left"
+                  stroke="#38bdf8"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={{ stroke: '#334155' }}
+                />
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  stroke="#f97316"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={{ stroke: '#334155' }}
+                  unit=" MW"
+                  domain={[0, 'auto']}
+                />
+              </>
+            )}
+
             <Tooltip content={<CustomTooltip />} />
 
-            {/* SINGLE REGION MODE VISUALIZATIONS */}
-            {!isCompareMode && (
+            {/* 1. HOTSPOTS ONLY VIEW -> STRICTLY BLUE GRAPH */}
+            {activeMetric === 'hotspots' && (
               <>
-                {/* 1. Hotspots Area Curve (Rendered when 'all' or 'hotspots' is selected) */}
-                {(activeMetric === 'all' || activeMetric === 'hotspots') && (
-                  <Area
+                <Area
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey={isCompareMode ? "regionACount" : "count"}
+                  name={isCompareMode ? `${regionAName} (Hotspots)` : "Hotspots Count"}
+                  stroke="#38bdf8"
+                  strokeWidth={2.5}
+                  fillOpacity={1}
+                  fill="url(#gradientAnomalies)"
+                />
+                {isCompareMode && regionAName !== regionBName && (
+                  <Line
                     yAxisId="left"
                     type="monotone"
-                    dataKey="count"
-                    name="Hotspots Count"
-                    stroke="#38bdf8"
-                    strokeWidth={2.5}
-                    fillOpacity={1}
-                    fill="url(#gradientAnomalies)"
-                  />
-                )}
-
-                {/* 2. Mean FRP Line (Rendered when 'all' is selected) */}
-                {activeMetric === 'all' && (
-                  <Line
-                    yAxisId="right"
-                    type="monotone"
-                    dataKey="avgFrp"
-                    name="Mean FRP (MW)"
-                    stroke="#f97316"
-                    strokeWidth={2.5}
-                    dot={{ r: 3.5, fill: '#f97316', stroke: '#111722', strokeWidth: 1.5 }}
-                    activeDot={{ r: 6, fill: '#f97316', stroke: '#fff', strokeWidth: 2 }}
-                  />
-                )}
-
-                {/* 3. Dedicated Mean FRP Area Chart (Rendered when 'frp' is selected) */}
-                {activeMetric === 'frp' && (
-                  <Area
-                    yAxisId="right"
-                    type="monotone"
-                    dataKey="avgFrp"
-                    name="Mean Radiative Power"
-                    stroke="#f97316"
-                    strokeWidth={2.5}
-                    fillOpacity={1}
-                    fill="url(#gradientFrpArea)"
-                  />
-                )}
-
-                {/* 4. 3-Sigma Anomaly Baseline Reference Line */}
-                {(activeMetric === 'all' || activeMetric === 'frp') && (
-                  <ReferenceLine
-                    yAxisId="right"
-                    y={45}
-                    stroke="#ef4444"
-                    strokeWidth={1.5}
+                    dataKey="regionBCount"
+                    name={`${regionBName} (Hotspots)`}
+                    stroke="#c084fc"
+                    strokeWidth={2}
                     strokeDasharray="4 4"
-                    label={{
-                      value: '3σ Threshold (45 MW)',
-                      fill: '#ef4444',
-                      fontSize: 10,
-                      position: 'insideTopRight',
-                    }}
+                    dot={{ r: 2.5, fill: '#c084fc' }}
                   />
                 )}
               </>
             )}
 
-            {/* DUAL-REGION COMPARISON MODE */}
-            {isCompareMode && (
+            {/* 2. FRP ONLY VIEW -> STRICTLY ORANGE GRAPH */}
+            {activeMetric === 'frp' && (
               <>
-                {activeMetric !== 'frp' ? (
+                <Area
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey={isCompareMode ? "regionAFrp" : "avgFrp"}
+                  name={isCompareMode ? `${regionAName} (FRP)` : "Mean Radiative Power"}
+                  stroke="#f97316"
+                  strokeWidth={2.5}
+                  fillOpacity={1}
+                  fill="url(#gradientFrpArea)"
+                />
+                {isCompareMode && regionAName !== regionBName && (
+                  <Line
+                    yAxisId="left"
+                    type="monotone"
+                    dataKey="regionBFrp"
+                    name={`${regionBName} (FRP)`}
+                    stroke="#fbbf24"
+                    strokeWidth={2}
+                    strokeDasharray="4 4"
+                    dot={{ r: 2.5, fill: '#fbbf24' }}
+                  />
+                )}
+                <ReferenceLine
+                  yAxisId="left"
+                  y={45}
+                  stroke="#ef4444"
+                  strokeWidth={1.5}
+                  strokeDasharray="4 4"
+                  label={{
+                    value: '3σ Threshold (45 MW)',
+                    fill: '#ef4444',
+                    fontSize: 10,
+                    position: 'insideTopRight',
+                  }}
+                />
+              </>
+            )}
+
+            {/* 3. COMBINED VIEW -> BLUE (Hotspots) + ORANGE (FRP) */}
+            {activeMetric === 'all' && (
+              <>
+                <Area
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey={isCompareMode ? "regionACount" : "count"}
+                  name={isCompareMode ? `${regionAName} (Hotspots)` : "Hotspots Count"}
+                  stroke="#38bdf8"
+                  strokeWidth={2.5}
+                  fillOpacity={1}
+                  fill="url(#gradientAnomalies)"
+                />
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey={isCompareMode ? "regionAFrp" : "avgFrp"}
+                  name={isCompareMode ? `${regionAName} (FRP)` : "Mean FRP (MW)"}
+                  stroke="#f97316"
+                  strokeWidth={2.5}
+                  dot={{ r: 3.5, fill: '#f97316', stroke: '#111722', strokeWidth: 1.5 }}
+                  activeDot={{ r: 6, fill: '#f97316', stroke: '#fff', strokeWidth: 2 }}
+                />
+                {isCompareMode && regionAName !== regionBName && (
                   <>
-                    <Area
-                      yAxisId="left"
-                      type="monotone"
-                      dataKey="regionACount"
-                      name={`${regionAName} (Hotspots)`}
-                      stroke="#38bdf8"
-                      strokeWidth={2.5}
-                      fillOpacity={1}
-                      fill="url(#gradientAnomalies)"
-                    />
-                    <Area
+                    <Line
                       yAxisId="left"
                       type="monotone"
                       dataKey="regionBCount"
                       name={`${regionBName} (Hotspots)`}
-                      stroke="#f59e0b"
-                      strokeWidth={2.5}
-                      fillOpacity={1}
-                      fill="url(#gradientRegionB)"
-                    />
-                  </>
-                ) : (
-                  <>
-                    <Line
-                      yAxisId="left"
-                      type="monotone"
-                      dataKey="regionAFrp"
-                      name={`${regionAName} (FRP)`}
-                      stroke="#38bdf8"
-                      strokeWidth={2.5}
-                      dot={{ r: 3, fill: '#38bdf8' }}
+                      stroke="#c084fc"
+                      strokeWidth={2}
+                      strokeDasharray="4 4"
+                      dot={false}
                     />
                     <Line
-                      yAxisId="left"
+                      yAxisId="right"
                       type="monotone"
                       dataKey="regionBFrp"
                       name={`${regionBName} (FRP)`}
-                      stroke="#f97316"
-                      strokeWidth={2.5}
-                      dot={{ r: 3, fill: '#f97316' }}
-                    />
-                    <ReferenceLine
-                      yAxisId="left"
-                      y={45}
-                      stroke="#ef4444"
-                      strokeWidth={1.5}
+                      stroke="#fbbf24"
+                      strokeWidth={2}
                       strokeDasharray="4 4"
-                      label={{
-                        value: '3σ Alert Baseline',
-                        fill: '#ef4444',
-                        fontSize: 10,
-                        position: 'insideTopRight',
-                      }}
+                      dot={false}
                     />
                   </>
                 )}
+                <ReferenceLine
+                  yAxisId="right"
+                  y={45}
+                  stroke="#ef4444"
+                  strokeWidth={1.5}
+                  strokeDasharray="4 4"
+                  label={{
+                    value: '3σ Threshold (45 MW)',
+                    fill: '#ef4444',
+                    fontSize: 10,
+                    position: 'insideTopRight',
+                  }}
+                />
               </>
             )}
           </ComposedChart>
