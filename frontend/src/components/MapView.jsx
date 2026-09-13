@@ -648,31 +648,40 @@ export function MapView({
     const depot = activeRoute.origin_depot;
     let depotMarker = null;
     if (depot && depot.latitude && depot.longitude) {
+      const depotLabel = (depot.name || 'BASE')
+        .split('(')[0]
+        .replace(/Emergency|Fire Station|Response Base/gi, '')
+        .trim()
+        .toUpperCase()
+        .slice(0, 20) || 'BASE';
+
       const depotIcon = L.divIcon({
-        className: 'dispatch-origin-pin',
+        className: 'dispatch-origin-pin-wrapper',
         html: `
           <div style="
-            display: flex;
+            display: inline-flex;
             align-items: center;
-            gap: 4px;
-            background: #0284c7;
+            gap: 5px;
+            background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
             color: #ffffff;
-            padding: 3px 8px;
-            border-radius: 6px;
+            padding: 4px 10px;
+            border-radius: 9999px;
             font-weight: 800;
             font-family: 'JetBrains Mono', monospace;
             font-size: 10px;
-            border: 1.5px solid #ffffff;
-            box-shadow: 0 4px 12px rgba(2, 132, 199, 0.5);
+            border: 1.5px solid rgba(255, 255, 255, 0.95);
+            box-shadow: 0 4px 14px rgba(2, 132, 199, 0.65), 0 0 10px rgba(56, 189, 248, 0.4);
             letter-spacing: 0.5px;
             white-space: nowrap;
+            width: max-content;
+            transform: translate(-50%, -50%);
           ">
-            <span>🚒</span>
-            <span>DISPATCH: ${(depot.name || 'BASE').toUpperCase().slice(0, 20)}</span>
+            <span style="font-size: 11px; line-height: 1;">🚒</span>
+            <span>DISPATCH: ${depotLabel}</span>
           </div>
         `,
-        iconSize: [160, 24],
-        iconAnchor: [80, 12],
+        iconSize: [0, 0],
+        iconAnchor: [0, 0],
       });
       depotMarker = L.marker([depot.latitude, depot.longitude], { icon: depotIcon })
         .addTo(map)
