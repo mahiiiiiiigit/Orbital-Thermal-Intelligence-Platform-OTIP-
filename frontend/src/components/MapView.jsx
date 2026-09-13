@@ -10,6 +10,7 @@ import 'leaflet.heat';
 import { TAXONOMY_COLORS, THERMAL_GRADIENT, FFDR_COLORS } from '../constants/taxonomy';
 import { HotspotCard } from './HotspotCard';
 import { ClusterCard } from './ClusterCard';
+import { Navigation, X } from 'lucide-react';
 
 const TYPE_COLORS = {
   fire_station: '#ef4444',
@@ -17,7 +18,6 @@ const TYPE_COLORS = {
   police: '#3b82f6',
   ambulance: '#f59e0b',
   shelter: '#8b5cf6',
-  disaster_management: '#10b981',
 };
 
 export function MapView({
@@ -27,19 +27,19 @@ export function MapView({
   ffdrGrid = null,
   temporarySafetyResources = [],
   mapMode = 'hybrid', // 'standard' | 'thermal' | 'hybrid' | 'forest_risk'
-  theme = 'dark',
+  viewMode = 'dark', // 'dark' | 'light'
   regionConfig,
   selectedHotspot,
   selectedCluster,
   activeRoute,
   onSetRoute,
+  onClearRoute,
   onSelectHotspot,
   onSelectCluster,
   onShowTemporaryResources,
   showingTemporaryResources = false,
   onViewFingerprint,
   onInvestigateEvent,
-  mode = 'auto',
 }) {
   const mapContainerRef = useRef(null);
   const cardRef = useRef(null);
@@ -123,7 +123,7 @@ export function MapView({
     };
   }, []);
 
-  // 2. Manage Dynamic Base Tile Layer (CARTO Dark / Voyager)
+  // 2. Manage Base Tile Layer (CARTO Dark or Light)
   useEffect(() => {
     if (!map) return;
 
@@ -132,8 +132,8 @@ export function MapView({
     }
 
     const cartoKey = import.meta.env.VITE_CARTO_KEY || 'cb1_2jno_1_ef0c23ffe5f8a02710afad82';
-    const tileStyle = theme === 'dark' ? 'dark_all' : 'rastertiles/voyager';
-    const tileUrl = `https://basemaps.cartocdn.com/${tileStyle}/{z}/{x}/{y}.png?key=${cartoKey}`;
+    const tileSub = viewMode === 'light' ? 'light_all' : 'dark_all';
+    const tileUrl = `https://basemaps.cartocdn.com/${tileSub}/{z}/{x}/{y}.png?key=${cartoKey}`;
 
     const newTileLayer = L.tileLayer(tileUrl, {
       attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; NASA FIRMS &copy; Forest Survey of India &copy; OpenRouteService',
@@ -142,7 +142,7 @@ export function MapView({
     }).addTo(map);
 
     baseTileLayerRef.current = newTileLayer;
-  }, [map, theme]);
+  }, [map, viewMode]);
 
   // 3. Manage Region Pan/Zoom Navigation
   useEffect(() => {
@@ -218,9 +218,6 @@ export function MapView({
     // Pointer arrow horizontal anchor relative to card
     const arrowLeft = Math.max(20, Math.min(point.x - left, cardWidth - 20));
 
-    // Maximum height the card is allowed to expand to without overflowing bottom of viewport
-    const availableMaxHeight = Math.max(160, Math.floor(containerHeight - top - MARGIN));
-
     setPopupPos({
       left: Math.round(left),
       top: Math.round(top),
@@ -228,7 +225,6 @@ export function MapView({
       arrowLeft: Math.round(arrowLeft),
       markerX: point.x,
       markerY: point.y,
-      maxHeight: availableMaxHeight,
       isVisible: true,
     });
   }, [map, activeAnchor]);
@@ -296,29 +292,6 @@ export function MapView({
       if (cardResizeObs) cardResizeObs.disconnect();
     };
   }, [map, activeAnchor, updatePopupPosition]);
-
-  // Disable Leaflet map scroll and drag propagation on the popup card element so internal scrolling works
-  useEffect(() => {
-    const cardEl = cardRef.current;
-    if (!cardEl) return;
-
-    if (L && L.DomEvent) {
-      L.DomEvent.disableScrollPropagation(cardEl);
-      L.DomEvent.disableClickPropagation(cardEl);
-    }
-
-    const stopScroll = (e) => {
-      e.stopPropagation();
-    };
-
-    cardEl.addEventListener('wheel', stopScroll, { passive: true });
-    cardEl.addEventListener('touchmove', stopScroll, { passive: true });
-
-    return () => {
-      cardEl.removeEventListener('wheel', stopScroll);
-      cardEl.removeEventListener('touchmove', stopScroll);
-    };
-  }, [activeAnchor, popupPos?.isVisible]);
 
   // 5. Render Overlays according to mapMode, telemetry, and temporary resources
   useEffect(() => {
@@ -435,6 +408,7 @@ export function MapView({
       }).addTo(map);
 
       // 2. Distinct prominent Cluster Marker Badge with detection count: (18), (30), (48)
+      const isLight = viewMode === 'light';
       const count = cluster.detection_count || 1;
       const clusterIconHtml = `
         <div style="
@@ -445,10 +419,10 @@ export function MapView({
           height: 36px;
           padding: 0 6px;
           border-radius: 9999px;
-          background: #111722;
+          background: ${isLight ? '#ffffff' : '#111722'};
           border: 2px solid ${color};
-          box-shadow: 0 0 14px ${color}80, 0 4px 12px rgba(0,0,0,0.6);
-          color: #ffffff;
+          box-shadow: 0 0 14px ${color}80, 0 4px 12px rgba(0,0,0,${isLight ? '0.25' : '0.6'});
+          color: ${isLight ? '#0f172a' : '#ffffff'};
           font-family: 'JetBrains Mono', monospace;
           font-size: 11px;
           font-weight: 800;
@@ -472,15 +446,50 @@ export function MapView({
         zIndexOffset: 500, // Elevated above standard hotspot markers
       }).addTo(map);
 
-      const tooltipContent = `<strong>Persistent Industrial Cluster — ${count} detections</strong><br/>${cluster.facility_name || 'Industrial Facility'}`;
+      const tooltipBg = isLight ? 'rgba(255, 255, 255, 0.98)' : 'rgba(17, 23, 34, 0.96)';
+      const tooltipTextColor = isLight ? '#0f172a' : '#f8fafc';
+      const tooltipBorder = isLight ? `1px solid ${color}` : `1px solid ${color}60`;
+      const tooltipShadow = isLight ? '0 8px 24px rgba(0,0,0,0.15)' : '0 8px 24px rgba(0,0,0,0.6)';
+
+      const clusterCategory = cluster.classification
+        ? cluster.classification.replace(/_/g, ' ')
+        : 'INDUSTRIAL CLUSTER';
+      const clusterTitle = cluster.facility_name || cluster.name || 'Industrial Facility';
+      const frpSnippet = cluster.mean_frp != null && Number.isFinite(Number(cluster.mean_frp))
+        ? `Avg: ${Number(cluster.mean_frp).toFixed(1)} MW`
+        : (cluster.peak_frp != null && Number.isFinite(Number(cluster.peak_frp))
+          ? `Peak: ${Number(cluster.peak_frp).toFixed(1)} MW`
+          : `${count} Detections`);
+
+      const tooltipContent = `
+        <div style="background: ${tooltipBg}; border: ${tooltipBorder}; border-radius: 8px; padding: 7px 10px; font-family: 'Inter', sans-serif; box-shadow: ${tooltipShadow}; min-width: 180px; backdrop-filter: blur(8px);">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 3px;">
+            <span style="font-size: 10px; font-family: 'JetBrains Mono', monospace; font-weight: 700; color: ${color}; text-transform: uppercase;">
+              ${clusterCategory}
+            </span>
+            <span style="font-size: 10.5px; font-family: 'JetBrains Mono', monospace; font-weight: 800; color: #f97316;">
+              ${count} DETECTIONS
+            </span>
+          </div>
+          <div style="font-size: 11px; font-weight: 600; color: ${tooltipTextColor}; margin-bottom: 3px; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+            ${clusterTitle}
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 9.5px; font-family: 'JetBrains Mono', monospace; color: ${isLight ? '#64748b' : '#94a3b8'}; border-top: 1px solid ${isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}; padding-top: 3px; margin-top: 3px;">
+            <span>${frpSnippet}</span>
+            <span style="color: #0284c7;">Click for details →</span>
+          </div>
+        </div>
+      `;
 
       clusterMarker.bindTooltip(tooltipContent, {
         sticky: true,
         direction: 'top',
+        className: 'custom-hud-tooltip',
       });
       circle.bindTooltip(tooltipContent, {
         sticky: true,
         direction: 'top',
+        className: 'custom-hud-tooltip',
       });
 
       const handleClusterClick = (e) => {
@@ -500,22 +509,59 @@ export function MapView({
     });
 
     // Render Hotspot Markers (Standard, Hybrid, Forest Risk & Thermal modes)
+    const isLight = viewMode === 'light';
     hotspots.forEach((hotspot) => {
       const isSpike = hotspot.classification === 'INDUSTRIAL_FIRE' || (hotspot.frp >= 90);
       const color = TAXONOMY_COLORS[hotspot.classification] || '#94a3b8';
 
+      // Ensure high contrast on both dark and light basemaps:
+      // In light mode, yellow/gray dots have a solid dark border so they pop instantly against white landmass
+      const strokeColor = isLight
+        ? (isSpike ? '#dc2626' : (hotspot.classification === 'AGRICULTURAL_BURNING' ? '#78350f' : '#0f172a'))
+        : (isSpike ? '#ffffff' : color);
+
       const marker = L.circleMarker([hotspot.latitude, hotspot.longitude], {
         radius: isSpike ? 9 : (hotspot.classification === 'GAS_FLARE' || hotspot.classification === 'PERSISTENT_INDUSTRIAL' ? 7 : 5),
-        color: isSpike ? '#ffffff' : color,
+        color: strokeColor,
         fillColor: color,
-        fillOpacity: mapMode === 'thermal' ? 0.35 : (mapMode === 'hybrid' ? 0.95 : 0.85),
-        weight: isSpike ? 2 : 1.2,
+        fillOpacity: isLight ? 0.98 : (mapMode === 'thermal' ? 0.35 : (mapMode === 'hybrid' ? 0.95 : 0.85)),
+        weight: isLight ? 1.6 : (isSpike ? 2 : 1.2),
       }).addTo(map);
 
-      marker.bindTooltip(
-        `<strong>${hotspot.classification}</strong> • ${hotspot.frp} MW<br/>${hotspot.forest_name || hotspot.facility_name || hotspot.state || ''}`,
-        { sticky: true, direction: 'top' }
-      );
+      const frpVal = Number(hotspot.frp) || 0;
+      const locationLabel = hotspot.facility_name || hotspot.forest_name || hotspot.state || `${hotspot.latitude.toFixed(2)}°, ${hotspot.longitude.toFixed(2)}°`;
+      const tempVal = hotspot.brightness ? `${Number(hotspot.brightness).toFixed(0)} K` : (hotspot.bright_ti4 ? `${Number(hotspot.bright_ti4).toFixed(0)} K` : '330 K');
+
+      const tooltipBg = isLight ? 'rgba(255, 255, 255, 0.98)' : 'rgba(17, 23, 34, 0.96)';
+      const tooltipTextColor = isLight ? '#0f172a' : '#f8fafc';
+      const tooltipBorder = isLight ? `1px solid ${color}` : `1px solid ${color}60`;
+      const tooltipShadow = isLight ? '0 8px 24px rgba(0,0,0,0.15)' : '0 8px 24px rgba(0,0,0,0.6)';
+
+      const tooltipContent = `
+        <div style="background: ${tooltipBg}; border: ${tooltipBorder}; border-radius: 8px; padding: 7px 10px; font-family: 'Inter', sans-serif; box-shadow: ${tooltipShadow}; min-width: 170px; backdrop-filter: blur(8px);">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 3px;">
+            <span style="font-size: 10px; font-family: 'JetBrains Mono', monospace; font-weight: 700; color: ${color}; text-transform: uppercase;">
+              ${(hotspot.classification || 'ANOMALY').replace('_', ' ')}
+            </span>
+            <span style="font-size: 10.5px; font-family: 'JetBrains Mono', monospace; font-weight: 800; color: #f97316;">
+              ${frpVal.toFixed(1)} MW
+            </span>
+          </div>
+          <div style="font-size: 11px; font-weight: 600; color: ${tooltipTextColor}; margin-bottom: 3px; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+            ${locationLabel}
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 9.5px; font-family: 'JetBrains Mono', monospace; color: ${isLight ? '#64748b' : '#94a3b8'}; border-top: 1px solid ${isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}; padding-top: 3px; margin-top: 3px;">
+            <span>T4: ${tempVal}</span>
+            <span style="color: #0284c7;">Click for details →</span>
+          </div>
+        </div>
+      `;
+
+      marker.bindTooltip(tooltipContent, {
+        sticky: true,
+        direction: 'top',
+        className: 'custom-hud-tooltip',
+      });
 
       marker.on('click', (e) => {
         lastMarkerClickTimeRef.current = Date.now();
@@ -556,25 +602,38 @@ export function MapView({
       alertsLayerRef.current.push(alertMarker);
     });
 
-  }, [map, hotspots, clusters, alerts, ffdrGrid, temporarySafetyResources, mapMode, onSelectHotspot, onSelectCluster]);
+  }, [map, hotspots, clusters, alerts, ffdrGrid, temporarySafetyResources, mapMode, viewMode, onSelectHotspot, onSelectCluster]);
 
   // 6. Render Active Emergency Dispatch Route Polyline
   useEffect(() => {
     if (!map) return;
 
-    routeLayersRef.current.forEach((l) => map.removeLayer(l));
-    routeLayersRef.current = [];
+    if (routeLayersRef.current.length > 0) {
+      console.log('[Routing] Removing route layers from map');
+      routeLayersRef.current.forEach((l) => map.removeLayer(l));
+      routeLayersRef.current = [];
+    }
 
     if (!activeRoute || !activeRoute.route || !activeRoute.route.coordinates) return;
 
     const coords = activeRoute.route.coordinates;
-    if (coords.length === 0) return;
+    if (!Array.isArray(coords) || coords.length === 0) {
+      console.warn('[Routing] activeRoute has invalid or empty coordinates');
+      return;
+    }
+
+    console.log('[Routing] Leaflet polyline created:', {
+      coordinatesCount: coords.length,
+      distanceKm: activeRoute.route?.distance_km,
+      durationMinutes: activeRoute.route?.duration_minutes,
+      origin: activeRoute.origin_depot?.name,
+    });
 
     // Glowing casing polyline
     const glowLine = L.polyline(coords, {
       color: '#f59e0b',
       weight: 7,
-      opacity: 0.45,
+      opacity: 0.5,
     }).addTo(map);
 
     // Inner route polyline
@@ -588,41 +647,48 @@ export function MapView({
     // Origin Base Marker
     const depot = activeRoute.origin_depot;
     let depotMarker = null;
-    if (depot) {
+    if (depot && depot.latitude && depot.longitude) {
       const depotIcon = L.divIcon({
-        className: '',
-        html: '<div style="background:#0284c7; color:#fff; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:10px; border:1px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,0.5);">DISPATCH ORIGIN</div>',
-        iconSize: [100, 20],
-        iconAnchor: [50, 10],
+        className: 'dispatch-origin-pin',
+        html: `
+          <div style="
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: #0284c7;
+            color: #ffffff;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-weight: 800;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            border: 1.5px solid #ffffff;
+            box-shadow: 0 4px 12px rgba(2, 132, 199, 0.5);
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+          ">
+            <span>🚒</span>
+            <span>DISPATCH: ${(depot.name || 'BASE').toUpperCase().slice(0, 20)}</span>
+          </div>
+        `,
+        iconSize: [160, 24],
+        iconAnchor: [80, 12],
       });
-      depotMarker = L.marker([depot.latitude, depot.longitude], { icon: depotIcon, zIndexOffset: 950 })
+      depotMarker = L.marker([depot.latitude, depot.longitude], { icon: depotIcon })
         .addTo(map)
         .bindTooltip(`<strong>${depot.name}</strong><br/>Emergency Response Dispatch Point`, { permanent: false, direction: 'top' });
     }
 
-    // Destination Incident Target Marker
-    const targetCoords = activeRoute.target_coords || (coords.length > 0 ? { latitude: coords[coords.length - 1][0], longitude: coords[coords.length - 1][1] } : null);
-    let targetMarker = null;
-    if (targetCoords) {
-      const targetName = activeRoute.target_event?.forest_name || activeRoute.target_event?.facility_name || 'Thermal Anomaly Target';
-      const targetIcon = L.divIcon({
-        className: '',
-        html: '<div style="background:#ef4444; color:#fff; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:10px; border:1px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,0.5);">INCIDENT TARGET</div>',
-        iconSize: [100, 20],
-        iconAnchor: [50, 10],
-      });
-      targetMarker = L.marker([targetCoords.latitude, targetCoords.longitude], { icon: targetIcon, zIndexOffset: 950 })
-        .addTo(map)
-        .bindTooltip(`<strong>${targetName}</strong><br/>Emergency Incident Destination`, { permanent: false, direction: 'top' });
-    }
-
     routeLayersRef.current = [glowLine, routeLine];
     if (depotMarker) routeLayersRef.current.push(depotMarker);
-    if (targetMarker) routeLayersRef.current.push(targetMarker);
+
+    // Invalidate map size to sync with container dimensions before fitting bounds
+    map.invalidateSize();
 
     // Fit map bounds to show complete route
     const bounds = L.latLngBounds(coords);
     map.fitBounds(bounds, { padding: [60, 60], maxZoom: 14 });
+    console.log('[Routing] fitBounds executed:', bounds);
 
   }, [map, activeRoute]);
 
@@ -631,28 +697,50 @@ export function MapView({
       {/* Map DOM Canvas */}
       <div ref={mapContainerRef} className="w-full h-full" />
 
-      {/* Floating Map-Edge Active Dispatch Status Pill */}
+      {/* Floating Active Dispatch Route HUD */}
       {activeRoute && activeRoute.route && (
-        <div className="absolute top-4 left-4 z-[1000] bg-dark-900/95 border border-amber-500/40 rounded-xl p-2.5 shadow-2xl backdrop-blur-md flex items-center gap-3 text-xs max-w-md animate-fadeIn">
-          <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping flex-shrink-0" />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 font-bold text-amber-400 text-[11px] truncate">
-              <span>ACTIVE DISPATCH ROUTE</span>
-              <span className="text-slate-400 font-normal">•</span>
-              <span className="text-slate-200 font-mono">{activeRoute.route.distance_km} km ({activeRoute.route.duration_minutes} min)</span>
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-3 bg-dark-950/95 border border-amber-500/50 shadow-2xl backdrop-blur-xl px-4 py-2.5 rounded-2xl animate-fadeIn text-slate-100 max-w-[95vw] pointer-events-auto">
+          <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0 shadow-inner">
+            <Navigation className="w-4 h-4 animate-pulse" />
+          </div>
+
+          <div className="flex flex-col min-w-0 pr-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono font-extrabold uppercase tracking-wider text-amber-400">
+                Active Dispatch Route
+              </span>
+              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                {activeRoute.route.source || 'Emergency Route'}
+              </span>
             </div>
-            <div className="text-[10px] text-slate-400 truncate">
-              From: <strong className="text-slate-200">{activeRoute.origin_depot?.name || 'Emergency Base'}</strong>
+            <div className="text-xs font-semibold text-slate-200 truncate flex items-center gap-1.5 max-w-[240px] sm:max-w-[360px]">
+              <span className="truncate">{activeRoute.origin_depot?.name || 'Emergency Base'}</span>
+              <span className="text-slate-400 shrink-0">→</span>
+              <span className="text-orange-400 shrink-0">Incident Target</span>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => onSetRoute && onSetRoute(null)}
-            className="px-2.5 py-1 bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 text-red-300 hover:text-red-200 font-bold rounded-lg text-xs transition-colors flex-shrink-0"
-            title="Clear Route / Exit Emergency Response"
-          >
-            Clear Route
-          </button>
+
+          <div className="flex items-center gap-3 pl-2 border-l border-dark-750">
+            <div className="text-right">
+              <div className="text-xs font-mono font-bold text-emerald-400">
+                {activeRoute.route.distance_km} km
+              </div>
+              <div className="text-[10px] font-mono text-slate-400">
+                ETA: ~{activeRoute.route.duration_minutes} min
+              </div>
+            </div>
+
+            {onClearRoute && (
+              <button
+                type="button"
+                onClick={onClearRoute}
+                className="p-1.5 rounded-lg bg-dark-900 hover:bg-red-500/20 text-slate-400 hover:text-red-400 border border-dark-750 hover:border-red-500/40 transition-all cursor-pointer shadow-sm"
+                title="Clear Active Emergency Route"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -660,11 +748,11 @@ export function MapView({
       {activeAnchor && popupPos && (
         <div
           ref={cardRef}
-          className="absolute z-[1000] w-[370px] max-w-[calc(100%-32px)] flex flex-col transition-all duration-75 pointer-events-auto shadow-2xl"
+          className="absolute z-[1000] w-[370px] max-w-[calc(100%-32px)] transition-all duration-75 pointer-events-auto shadow-2xl"
           style={{
             left: `${popupPos.left}px`,
             top: `${popupPos.top}px`,
-            maxHeight: popupPos.maxHeight ? `${popupPos.maxHeight}px` : 'calc(100% - 32px)',
+            maxHeight: 'calc(100% - 32px)',
           }}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
@@ -694,7 +782,6 @@ export function MapView({
               onClose={() => onSelectHotspot && onSelectHotspot(null)}
               onViewFingerprint={onViewFingerprint}
               onInvestigateEvent={onInvestigateEvent}
-              mode={mode}
             />
           ) : selectedCluster ? (
             <ClusterCard
@@ -702,7 +789,6 @@ export function MapView({
               onClose={() => onSelectCluster && onSelectCluster(null)}
               onViewFingerprint={onViewFingerprint}
               onInvestigateEvent={onInvestigateEvent}
-              mode={mode}
             />
           ) : null}
         </div>

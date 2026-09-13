@@ -29,7 +29,6 @@ export function HotspotCard({
   onClose,
   onViewFingerprint,
   onInvestigateEvent,
-  mode = 'auto',
 }) {
   const [loadingRoute, setLoadingRoute] = useState(false);
   const [routeError, setRouteError] = useState(null);
@@ -60,7 +59,9 @@ export function HotspotCard({
         lon: hotspot.longitude,
         classification: hotspot.classification,
         frp: hotspot.frp,
-        riskScore: hotspot.risk_score || 50.0,
+        ...(hotspot.risk_score != null && Number.isFinite(Number(hotspot.risk_score))
+          ? { riskScore: Number(hotspot.risk_score) }
+          : {}),
       });
       setTriageData(data);
     } catch (err) {
@@ -81,10 +82,15 @@ export function HotspotCard({
     : [hotspot.explanation || 'Thermal signature evaluated by decision engine.'];
 
   // Smart Risk Score fields
-  const riskScore = hotspot.risk_score != null ? hotspot.risk_score : 25.0;
-  const riskLevel = hotspot.risk_level ? String(hotspot.risk_level).toUpperCase() : (riskScore >= 75 ? 'CRITICAL' : (riskScore >= 50 ? 'HIGH' : (riskScore >= 25 ? 'MEDIUM' : 'LOW')));
+  const hasRiskScore = hotspot.risk_score != null && Number.isFinite(Number(hotspot.risk_score));
+  const riskScore = hasRiskScore ? Number(hotspot.risk_score) : null;
+  const riskLevel = hotspot.risk_level
+    ? String(hotspot.risk_level).toUpperCase()
+    : (hasRiskScore
+      ? (riskScore >= 75 ? 'CRITICAL' : (riskScore >= 50 ? 'HIGH' : (riskScore >= 25 ? 'MEDIUM' : 'LOW')))
+      : 'UNASSESSED');
   const riskBreakdown = hotspot.risk_breakdown || {};
-  const riskExplanation = hotspot.risk_explanation || `${riskLevel} risk event evaluated by multi-factor thermal intelligence model.`;
+  const riskExplanation = hotspot.risk_explanation || 'Risk assessment is not available for this detection.';
 
   // Identify Critical Thermal Spikes / Industrial Excursions
   const isCriticalSpike =
@@ -101,8 +107,8 @@ export function HotspotCard({
   const canRespond =
     isCriticalSpike ||
     isWildfireHighRisk ||
-    (hotspot.classification === 'GAS_FLARE' && (hotspot.frp >= 40 || hotspot.is_anomaly)) ||
-    riskScore >= 50;
+    (hotspot.classification === 'GAS_FLARE' && (Number(hotspot.frp) >= 40 || hotspot.is_anomaly)) ||
+    (hasRiskScore && riskScore >= 50);
 
   const nearest = triageData?.nearest_resources || {};
   const sop = triageData?.recommended_response || {};
@@ -131,12 +137,8 @@ export function HotspotCard({
     setRouteError(null);
     try {
       const data = await fetchEmergencyRoute(hotspot.latitude, hotspot.longitude, res.latitude, res.longitude);
-      if (data) {
-        if (data.origin_depot) {
-          data.origin_depot.name = res.name;
-        }
-        data.target_event = hotspot;
-        data.destination_resource = res;
+      if (data && data.origin_depot) {
+        data.origin_depot.name = res.name;
       }
       onSetRoute(data);
     } catch (err) {
@@ -152,9 +154,7 @@ export function HotspotCard({
     if (showingTemporaryResources) {
       onShowTemporaryResources([]);
     } else {
-      const list = triageData?.facilities && triageData.facilities.length > 0
-        ? triageData.facilities
-        : Object.values(nearest).filter(Boolean);
+      const list = Object.values(nearest).filter(Boolean);
       onShowTemporaryResources(list);
     }
   };
@@ -169,12 +169,23 @@ export function HotspotCard({
 
   const hasFacilityAttribution = Boolean(
     hotspot.facility_name &&
-    !hotspot.facility_name.toLowerCase().includes('unknown') &&
-    !hotspot.facility_name.toLowerCase().includes('unregistered')
+    !String(hotspot.facility_name).toLowerCase().includes('unknown') &&
+    !String(hotspot.facility_name).toLowerCase().includes('unregistered')
   );
 
+  const confidenceLevel = ['HIGH', 'MEDIUM', 'LOW'].includes(
+    String(hotspot.confidence_level || '').toUpperCase()
+  )
+    ? String(hotspot.confidence_level).toUpperCase()
+    : null;
+
+  const hasZScore = hotspot.z_score != null && Number.isFinite(Number(hotspot.z_score));
+  const hasBaseline = hotspot.baseline_mean_frp != null && Number.isFinite(Number(hotspot.baseline_mean_frp));
+  const hasFrp = hotspot.frp != null && Number.isFinite(Number(hotspot.frp));
+  const hasBrightnessTemp = hotspot.brightness_temp != null && Number.isFinite(Number(hotspot.brightness_temp));
+
   return (
-    <div className="bg-dark-900/95 border border-dark-700/90 rounded-xl p-4 space-y-3 shadow-2xl backdrop-blur-md text-slate-200 select-text transition-colors duration-200 w-full max-h-full overflow-y-auto overscroll-contain">
+    <div className="bg-dark-900/95 border border-dark-700/90 rounded-xl p-4 space-y-3 shadow-2xl backdrop-blur-md text-slate-200 select-text transition-colors duration-200 w-[370px] max-h-[85vh] overflow-y-auto">
       {/* 1. Header: Classification, Confidence, Facility, Lat/Lon, Date, and Close Button */}
       <div className="flex items-start justify-between gap-2 border-b border-dark-700/80 pb-2.5">
         <div className="flex-1 pr-1">
@@ -203,7 +214,13 @@ export function HotspotCard({
 
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <div className="flex flex-col items-end gap-1">
-            <ConfidenceBadge level={hotspot.confidence_level || 'HIGH'} />
+            {confidenceLevel ? (
+              <ConfidenceBadge level={confidenceLevel} />
+            ) : (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold tracking-wider border bg-slate-500/20 text-slate-300 border-slate-500/40">
+                UNASSESSED
+              </span>
+            )}
             {hotspot.fire_danger_level && (
               <DangerBadge level={hotspot.fire_danger_level} />
             )}
@@ -230,13 +247,13 @@ export function HotspotCard({
               <span>Critical Thermal Spike</span>
             </span>
             <span className="text-[10px] font-mono text-red-300 font-bold">
-              Z-Score: +{hotspot.z_score || '4.5'}σ
+              Z-Score: {hasZScore ? `${Number(hotspot.z_score) >= 0 ? '+' : ''}${Number(hotspot.z_score).toFixed(2)}σ` : 'Baseline Pending'}
             </span>
           </div>
           <div className="text-slate-300 space-y-0.5 font-mono text-[11px]">
-            <div><strong>Facility:</strong> {hotspot.facility_name || 'Registered Industrial Complex'}</div>
-            <div><strong>Current FRP:</strong> <span className="text-red-400 font-bold">{hotspot.frp} MW</span></div>
-            <div><strong>Normal Baseline:</strong> {hotspot.baseline_mean_frp || '27.7'} MW</div>
+            <div><strong>Facility:</strong> {hotspot.facility_name || 'Unattributed Source'}</div>
+            <div><strong>Current FRP:</strong> <span className="text-red-400 font-bold">{hasFrp ? `${Number(hotspot.frp).toFixed(1)} MW` : '—'}</span></div>
+            <div><strong>Normal Baseline:</strong> {hasBaseline ? `${Number(hotspot.baseline_mean_frp).toFixed(1)} MW` : 'Baseline Pending'}</div>
           </div>
         </div>
       )}
@@ -255,14 +272,16 @@ export function HotspotCard({
         <div className="space-y-1">
           <div className="flex justify-between text-[11px] font-mono font-bold">
             <span className="text-slate-400">Threat Level:</span>
-            <span style={{ color: getRiskColor(riskScore) }}>{riskScore.toFixed(1)} / 100</span>
+            <span style={{ color: hasRiskScore ? getRiskColor(riskScore) : '#94a3b8' }}>
+              {hasRiskScore ? `${riskScore.toFixed(1)} / 100` : '— / 100'}
+            </span>
           </div>
           <div className="w-full h-2 bg-dark-900 rounded-full overflow-hidden border border-dark-750">
             <div
               className="h-full rounded-full transition-all duration-500"
               style={{
-                width: `${Math.min(100, Math.max(5, riskScore))}%`,
-                backgroundColor: getRiskColor(riskScore),
+                width: `${hasRiskScore ? Math.min(100, Math.max(0, riskScore)) : 0}%`,
+                backgroundColor: hasRiskScore ? getRiskColor(riskScore) : '#64748b',
               }}
             />
           </div>
@@ -321,12 +340,12 @@ export function HotspotCard({
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div className="bg-dark-850 border border-dark-700/80 rounded-lg p-2">
           <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Radiance (FRP)</span>
-          <span className="text-sm font-bold text-sky-400 font-mono">{hotspot.frp} MW</span>
+          <span className="text-sm font-bold text-sky-400 font-mono">{hasFrp ? `${Number(hotspot.frp).toFixed(1)} MW` : '—'}</span>
         </div>
         <div className="bg-dark-850 border border-dark-700/80 rounded-lg p-2">
           <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Brightness Temp</span>
           <span className="text-sm font-bold text-amber-400 font-mono">
-            {hotspot.brightness_temp ? `${hotspot.brightness_temp} K` : 'N/A'}
+            {hasBrightnessTemp ? `${Number(hotspot.brightness_temp).toFixed(1)} K` : '—'}
           </span>
         </div>
         <div className="bg-dark-850 border border-dark-700/80 rounded-lg p-2">
@@ -338,7 +357,7 @@ export function HotspotCard({
         <div className="bg-dark-850 border border-dark-700/80 rounded-lg p-2">
           <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Data Source</span>
           <span className="text-xs font-semibold text-slate-200 font-mono">
-            {hotspot.source || 'NASA_FIRMS'}
+            {hotspot.source || '—'}
           </span>
         </div>
       </div>
@@ -547,7 +566,10 @@ export function HotspotCard({
         </button>
 
         <a
-          href={getDossierDownloadUrl(hotspot.cluster_id || hotspot.id || 'jamnagar-refinery', mode)}
+          href={hotspot.id ? getDossierDownloadUrl(
+            hotspot.id,
+            hotspot.source === 'DEMO_FSI' ? 'demo' : 'live'
+          ) : undefined}
           target="_blank"
           rel="noreferrer"
           className="flex-1 py-1.5 px-3 bg-dark-850 hover:bg-dark-800 border border-dark-700 text-slate-300 hover:text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5 text-center"

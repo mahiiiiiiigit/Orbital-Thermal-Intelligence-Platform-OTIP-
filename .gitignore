@@ -33,3 +33,6 @@ env/
 # Temporary and log files
 *.log
 scratch/
+
+# Large historical FIRMS training datasets and archives
+data/firms/

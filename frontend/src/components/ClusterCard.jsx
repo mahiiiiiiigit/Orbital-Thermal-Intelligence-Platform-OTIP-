@@ -8,7 +8,6 @@ export function ClusterCard({
   onClose,
   onViewFingerprint,
   onInvestigateEvent,
-  mode = 'auto',
 }) {
   if (!cluster) return null;
 
@@ -25,7 +24,7 @@ export function ClusterCard({
   );
 
   const facilityIdentifier = cluster.facility_name || cluster.cluster_id || `${cluster.latitude?.toFixed(2)},${cluster.longitude?.toFixed(2)}`;
-  const dossierUrl = getDossierDownloadUrl(cluster.cluster_id || 'jamnagar-refinery', mode);
+  const dossierUrl = getDossierDownloadUrl(cluster.cluster_id || 'jamnagar-refinery', 'demo');
 
   // "Why This Cluster Matters" bullet points
   const clusterMatters = cluster.reasons && cluster.reasons.length > 0
@@ -38,7 +37,7 @@ export function ClusterCard({
       ];
 
   return (
-    <div className="bg-dark-900/95 border border-dark-700/90 rounded-xl p-4 space-y-3 shadow-2xl backdrop-blur-md text-slate-200 select-text transition-colors duration-200 w-full max-h-full overflow-y-auto overscroll-contain">
+    <div className="bg-dark-900/95 border border-dark-700/90 rounded-xl p-4 space-y-3 shadow-2xl backdrop-blur-md text-slate-200 select-text transition-colors duration-200 w-[370px] max-h-[85vh] overflow-y-auto">
       {/* Header */}
       <div className="border-b border-dark-700/80 pb-2">
         <div className="flex items-center justify-between gap-2">

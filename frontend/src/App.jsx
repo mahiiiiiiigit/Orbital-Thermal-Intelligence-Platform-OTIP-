@@ -13,8 +13,20 @@ import {
 import { REGIONS } from './constants/taxonomy';
 import { FacilityFingerprintModal } from './components/FacilityFingerprintModal';
 import { EventInvestigationModal } from './components/EventInvestigationModal';
+import { HotspotDetailPanel } from './components/HotspotDetailPanel';
+import { AlertsPage } from './components/AlertsPage';
+import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard';
+import { LandingPage } from './components/landing/LandingPage';
 
 export function App() {
+  const [currentView, setCurrentView] = useState(() => {
+    const hash = window.location.hash;
+    if (hash === '#analytics') return 'analytics';
+    if (hash === '#alerts') return 'alerts';
+    if (hash === '#dashboard') return 'dashboard';
+    return 'landing';
+  });
+
   const [dataSource, setDataSource] = useState('firms'); // 'firms' | 'fsi'
   const [mode, setMode] = useState('auto'); // 'auto' (Live NASA) | 'demo'
   const [selectedRegion, setSelectedRegion] = useState('india');
@@ -22,8 +34,8 @@ export function App() {
   const [mapMode, setMapMode] = useState(() => {
     return localStorage.getItem('thermalwatch_map_mode') || 'hybrid';
   });
-  const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('thermalwatch_theme') || 'dark';
+  const [viewMode, setViewMode] = useState(() => {
+    return localStorage.getItem('thermalwatch_view_mode') || 'dark';
   });
 
   const [loading, setLoading] = useState(false);
@@ -43,21 +55,61 @@ export function App() {
   const [activeRoute, setActiveRoute] = useState(null);
   const [selectedFingerprintFacility, setSelectedFingerprintFacility] = useState(null);
   const [selectedInvestigationEvent, setSelectedInvestigationEvent] = useState(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Sync theme with document element
+  // Hash Change Listener for view synchronization
   useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    localStorage.setItem('thermalwatch_theme', theme);
-  }, [theme]);
-
-  // Toggle Theme
-  const handleToggleTheme = useCallback(() => {
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      if (hash === '#analytics') {
+        setCurrentView('analytics');
+      } else if (hash === '#alerts') {
+        setCurrentView('alerts');
+      } else if (hash === '#dashboard') {
+        setCurrentView('dashboard');
+      } else if (hash === '#landing' || !hash || hash === '#' || hash.startsWith('#features') || hash.startsWith('#how-it-works') || hash.startsWith('#use-cases') || hash.startsWith('#live-preview')) {
+        setCurrentView('landing');
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
+
+  const handleLaunchDashboard = useCallback(() => {
+    setCurrentView('dashboard');
+    window.location.hash = '#dashboard';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  const handleNavigateAlerts = useCallback(() => {
+    setCurrentView('alerts');
+    window.location.hash = '#alerts';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  const handleNavigateAnalytics = useCallback(() => {
+    setCurrentView('analytics');
+    window.location.hash = '#analytics';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  const handleNavigateLanding = useCallback(() => {
+    setCurrentView('landing');
+    window.location.hash = '#';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  // Manage Dark & Light viewmode classes and persistence
+  useEffect(() => {
+    if (viewMode === 'light') {
+      document.documentElement.classList.remove('dark');
+      document.documentElement.classList.add('light');
+    } else {
+      document.documentElement.classList.remove('light');
+      document.documentElement.classList.add('dark');
+    }
+    localStorage.setItem('thermalwatch_view_mode', viewMode);
+  }, [viewMode]);
 
   // Save map mode to localStorage
   const handleSelectMapMode = useCallback((newMode) => {
@@ -65,28 +117,43 @@ export function App() {
     localStorage.setItem('thermalwatch_map_mode', newMode);
   }, []);
 
-  // Clear temporary safety resources and route when selecting a different hotspot or cluster
+  // Commit active route to global map state
+  const handleCommitRoute = useCallback((route) => {
+    console.log('[Routing] activeRoute updated:', route);
+    setActiveRoute(route);
+  }, []);
+
+  // Explicit route removal action (only through user action)
+  const handleClearRoute = useCallback(() => {
+    console.log('[Routing] Route cleared');
+    setActiveRoute(null);
+  }, []);
+
+  // Dedicated handler for emergency routing from incident investigation modal:
+  // Only closes EventInvestigationModal AFTER API succeeds, geometry is valid, and committed to activeRoute
+  const handleSetEmergencyRoute = useCallback((routeData) => {
+    if (!routeData || !routeData.route || !Array.isArray(routeData.route.coordinates) || routeData.route.coordinates.length === 0) {
+      console.warn('[Routing] Attempted to commit invalid route geometry:', routeData);
+      return;
+    }
+    console.log('[Routing] activeRoute updated:', routeData);
+    setActiveRoute(routeData);
+    setCurrentView('dashboard');
+    window.location.hash = '#dashboard';
+    // Dismiss incident investigation modal only after route geometry is committed to global map state
+    setSelectedInvestigationEvent(null);
+  }, []);
+
+  // Clear temporary safety resources when selecting a different hotspot or cluster,
+  // but PRESERVE activeRoute across selections unless explicitly cleared.
   const handleSelectHotspot = useCallback((hotspot) => {
     setSelectedHotspot(hotspot);
     setTemporarySafetyResources([]);
-    setActiveRoute(null);
   }, []);
 
   const handleSelectCluster = useCallback((cluster) => {
     setSelectedCluster(cluster);
     setTemporarySafetyResources([]);
-    setActiveRoute(null);
-  }, []);
-
-  // Set active emergency dispatch route and manage UI state separation
-  const handleSetRoute = useCallback((routeData) => {
-    setActiveRoute(routeData);
-    if (routeData) {
-      // Automatically close large information card and modal dialogs so route is completely unobstructed
-      setSelectedHotspot(null);
-      setSelectedCluster(null);
-      setSelectedInvestigationEvent(null);
-    }
   }, []);
 
   // Load FSI FFDR Grid on startup
@@ -113,8 +180,9 @@ export function App() {
         setAlerts(fsiRes.alerts || []);
         setNotice(fsiRes.notice || 'DEMO DATA — Simulated Forest Survey of India (FSI) Layer');
 
-        if (sorted.length > 0) {
-          setTimelineIndex(sorted.length - 1);
+        const fsiDates = Array.from(new Set(sorted.map((h) => h.timestamp ? h.timestamp.slice(0, 10) : '').filter(Boolean))).sort();
+        if (fsiDates.length > 0) {
+          setTimelineIndex(fsiDates.length - 1);
         }
         setSelectedHotspot(null);
         setSelectedCluster(null);
@@ -140,8 +208,9 @@ export function App() {
         setAlerts(alertRes.alerts || []);
         setNotice(hotspotRes.notice || `Loaded ${sorted.length} hotspots (${region.name}).`);
 
-        if (sorted.length > 0) {
-          setTimelineIndex(sorted.length - 1);
+        const nasaDates = Array.from(new Set(sorted.map((h) => h.timestamp ? h.timestamp.slice(0, 10) : '').filter(Boolean))).sort();
+        if (nasaDates.length > 0) {
+          setTimelineIndex(nasaDates.length - 1);
         }
         setSelectedHotspot(null);
         setSelectedCluster(null);
@@ -166,6 +235,13 @@ export function App() {
     });
     return Array.from(dates).sort();
   }, [allHotspots]);
+
+  // Keep timelineIndex bounded within available date frames
+  useEffect(() => {
+    if (timelineDates.length > 0 && timelineIndex >= timelineDates.length) {
+      setTimelineIndex(timelineDates.length - 1);
+    }
+  }, [timelineDates, timelineIndex]);
 
   const activeDate = timelineDates[timelineIndex] || (timelineDates.length > 0 ? timelineDates[timelineDates.length - 1] : null);
 
@@ -192,6 +268,102 @@ export function App() {
     return { totalHotspots, totalClusters, totalAlerts, avgFrp };
   }, [allHotspots, clusters, alerts]);
 
+  // Landing Page View
+  if (currentView === 'landing') {
+    return (
+      <LandingPage
+        onLaunchDashboard={handleLaunchDashboard}
+        onNavigateAnalytics={handleNavigateAnalytics}
+        viewMode={viewMode}
+        onToggleViewMode={setViewMode}
+      />
+    );
+  }
+
+  // Analytics Trends SaaS Dashboard View
+  if (currentView === 'analytics') {
+    return (
+      <div className="relative w-screen h-screen overflow-y-auto overflow-x-hidden bg-[#0a0e17]">
+        <AnalyticsDashboard
+          hotspots={allHotspots}
+          clusters={clusters}
+          alerts={alerts}
+          onNavigateDashboard={handleLaunchDashboard}
+          onNavigateLanding={handleNavigateLanding}
+          onNavigateAlerts={handleNavigateAlerts}
+          onViewFingerprint={(facility) => setSelectedFingerprintFacility(facility)}
+          onInvestigateEvent={(event) => setSelectedInvestigationEvent(event)}
+        />
+
+        {/* Facility Thermal Fingerprint Modal Dialog */}
+        {selectedFingerprintFacility && (
+          <FacilityFingerprintModal
+            facilityIdentifier={selectedFingerprintFacility}
+            mode={mode}
+            onClose={() => setSelectedFingerprintFacility(null)}
+            onInvestigateEvent={(event) => setSelectedInvestigationEvent(event)}
+          />
+        )}
+
+        {/* Incident Investigation Modal Dialog */}
+        {selectedInvestigationEvent && (
+          <EventInvestigationModal
+            event={selectedInvestigationEvent}
+            mode={mode}
+            activeRoute={activeRoute}
+            onClose={() => setSelectedInvestigationEvent(null)}
+            onSetRoute={handleSetEmergencyRoute}
+            onClearRoute={handleClearRoute}
+            onShowTemporaryResources={setTemporarySafetyResources}
+            showingTemporaryResources={temporarySafetyResources.length > 0}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Alerts & Critical Events Page View
+  if (currentView === 'alerts') {
+    return (
+      <div className="relative w-screen h-screen overflow-hidden">
+        <AlertsPage
+          alerts={alerts}
+          hotspots={allHotspots}
+          onNavigateDashboard={handleLaunchDashboard}
+          onNavigateLanding={handleNavigateLanding}
+          onNavigateAnalytics={handleNavigateAnalytics}
+          onInvestigateEvent={(event) => setSelectedInvestigationEvent(event)}
+          onViewFingerprint={(facility) => setSelectedFingerprintFacility(facility)}
+        />
+
+        {/* Facility Thermal Fingerprint Modal Dialog (FACILITY-CENTRIC) */}
+        {selectedFingerprintFacility && (
+          <FacilityFingerprintModal
+            facilityIdentifier={selectedFingerprintFacility}
+            mode={mode}
+            onClose={() => setSelectedFingerprintFacility(null)}
+            onInvestigateEvent={(event) => setSelectedInvestigationEvent(event)}
+          />
+        )}
+
+        {/* Incident Investigation Modal Dialog (EVENT-CENTRIC) */}
+        {selectedInvestigationEvent && (
+          <EventInvestigationModal
+            event={selectedInvestigationEvent}
+            mode={mode}
+            activeRoute={activeRoute}
+            onClose={() => setSelectedInvestigationEvent(null)}
+            onSetRoute={handleSetEmergencyRoute}
+            onClearRoute={handleClearRoute}
+            onShowTemporaryResources={setTemporarySafetyResources}
+            showingTemporaryResources={temporarySafetyResources.length > 0}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Operational Dashboard View
   return (
     <div className="flex flex-col h-screen w-screen bg-dark-900 overflow-hidden text-slate-100 transition-colors duration-200">
       {/* Top Operations Navigation Bar */}
@@ -206,22 +378,21 @@ export function App() {
         onSelectSensor={setSelectedSensor}
         mapMode={mapMode}
         onSelectMapMode={handleSelectMapMode}
-        theme={theme}
-        onToggleTheme={handleToggleTheme}
+        viewMode={viewMode}
+        onToggleViewMode={setViewMode}
         onRefresh={() => loadData(true)}
         loading={loading}
         stats={stats}
-        alerts={alerts}
-        hotspots={allHotspots}
-        onSelectNotification={(item) => {
-          if (item) {
-            setSelectedInvestigationEvent(item);
-          }
-        }}
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+        onNavigateLanding={handleNavigateLanding}
+        onNavigateAlerts={handleNavigateAlerts}
+        onNavigateAnalytics={handleNavigateAnalytics}
+        currentView={currentView}
       />
 
       {/* Main Workspace Layout */}
-      <div className="flex flex-1 overflow-hidden relative z-0">
+      <div className="flex flex-1 overflow-hidden relative">
         {/* Left Analytics Overview Sidebar */}
         <Sidebar
           hotspots={allHotspots}
@@ -232,12 +403,11 @@ export function App() {
           onSelectFilterClass={setFilterClass}
           activeDate={activeDate}
           stats={stats}
+          isCollapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
           timelineDates={timelineDates}
           timelineIndex={timelineIndex}
           onChangeTimelineIndex={setTimelineIndex}
-          activeRoute={activeRoute}
-          onSetRoute={handleSetRoute}
-          onSelectHotspot={handleSelectHotspot}
         />
 
         {/* Center / Dominant GIS Map Area */}
@@ -250,20 +420,44 @@ export function App() {
             ffdrGrid={ffdrGrid}
             temporarySafetyResources={temporarySafetyResources}
             mapMode={mapMode}
-            theme={theme}
+            viewMode={viewMode}
             regionConfig={REGIONS[selectedRegion]}
             selectedHotspot={selectedHotspot}
             selectedCluster={selectedCluster}
             activeRoute={activeRoute}
-            onSetRoute={handleSetRoute}
+            onSetRoute={handleCommitRoute}
+            onClearRoute={handleClearRoute}
             onSelectHotspot={handleSelectHotspot}
             onSelectCluster={handleSelectCluster}
             onShowTemporaryResources={setTemporarySafetyResources}
             showingTemporaryResources={temporarySafetyResources.length > 0}
             onViewFingerprint={(facility) => setSelectedFingerprintFacility(facility)}
             onInvestigateEvent={(event) => setSelectedInvestigationEvent(event)}
-            mode={mode}
           />
+
+          {/* Facility Thermal Fingerprint Modal Dialog (FACILITY-CENTRIC) */}
+          {selectedFingerprintFacility && (
+            <FacilityFingerprintModal
+              facilityIdentifier={selectedFingerprintFacility}
+              mode={mode}
+              onClose={() => setSelectedFingerprintFacility(null)}
+              onInvestigateEvent={(event) => setSelectedInvestigationEvent(event)}
+            />
+          )}
+
+          {/* Incident Investigation Modal Dialog (EVENT-CENTRIC) */}
+          {selectedInvestigationEvent && (
+            <EventInvestigationModal
+              event={selectedInvestigationEvent}
+              mode={mode}
+              activeRoute={activeRoute}
+              onClose={() => setSelectedInvestigationEvent(null)}
+              onSetRoute={handleSetEmergencyRoute}
+              onClearRoute={handleClearRoute}
+              onShowTemporaryResources={setTemporarySafetyResources}
+              showingTemporaryResources={temporarySafetyResources.length > 0}
+            />
+          )}
 
           {/* Floating Intensity Legend (Bottom Right) */}
           {mapMode !== 'standard' && (
@@ -272,29 +466,24 @@ export function App() {
             </div>
           )}
         </main>
-      </div>
 
-      {/* Facility Thermal Fingerprint Modal Dialog (FACILITY-CENTRIC) */}
-      {selectedFingerprintFacility && (
-        <FacilityFingerprintModal
-          facilityIdentifier={selectedFingerprintFacility}
-          mode={mode}
-          onClose={() => setSelectedFingerprintFacility(null)}
+        {/* Right Dynamic Telemetry Detail Panel */}
+        <HotspotDetailPanel
+          selectedHotspot={selectedHotspot}
+          selectedCluster={selectedCluster}
+          recentHotspots={visibleHotspots}
+          activeRoute={activeRoute}
+          onSelectHotspot={handleSelectHotspot}
+          onClose={() => {
+            handleSelectHotspot(null);
+            handleSelectCluster(null);
+          }}
+          onViewFingerprint={(facility) => setSelectedFingerprintFacility(facility)}
           onInvestigateEvent={(event) => setSelectedInvestigationEvent(event)}
+          onSetRoute={handleCommitRoute}
+          onClearRoute={handleClearRoute}
         />
-      )}
-
-      {/* Incident Investigation Modal Dialog (EVENT-CENTRIC) */}
-      {selectedInvestigationEvent && (
-        <EventInvestigationModal
-          event={selectedInvestigationEvent}
-          mode={mode}
-          onClose={() => setSelectedInvestigationEvent(null)}
-          onSetRoute={handleSetRoute}
-          onShowTemporaryResources={setTemporarySafetyResources}
-          showingTemporaryResources={temporarySafetyResources.length > 0}
-        />
-      )}
+      </div>
     </div>
   );
 }

@@ -58,6 +58,7 @@ def generate_hotspots() -> List[Dict[str, Any]]:
                 "land_context": "Petroleum Refinery & Petrochemicals",
                 "distance_to_facility_m": round(random.uniform(65.0, 240.0), 1),
                 "source": "SIMULATED_DEMO",
+                "synthetic_label": "INDUSTRIAL_FIRE" if is_fire_anomaly else "GAS_FLARE",
             }
         )
 
@@ -93,6 +94,7 @@ def generate_hotspots() -> List[Dict[str, Any]]:
                 "land_context": "Integrated Steel Plant",
                 "distance_to_facility_m": round(random.uniform(90.0, 380.0), 1),
                 "source": "SIMULATED_DEMO",
+                "synthetic_label": "PERSISTENT_INDUSTRIAL",
             }
         )
 
@@ -134,6 +136,7 @@ def generate_hotspots() -> List[Dict[str, Any]]:
                 "land_context": "Coal Mining & Underground Coal Seam Combustion",
                 "distance_to_facility_m": round(random.uniform(850.0, 3100.0), 1),
                 "source": "SIMULATED_DEMO",
+                "synthetic_label": "MINING_ACTIVITY",
             }
         )
 
@@ -177,6 +180,7 @@ def generate_hotspots() -> List[Dict[str, Any]]:
                 "land_context": "Dense Deciduous Forest Reserve",
                 "distance_to_facility_m": round(random.uniform(600.0, 3800.0), 1),
                 "source": "SIMULATED_DEMO",
+                "synthetic_label": "WILDFIRE",
             }
         )
 
@@ -228,6 +232,7 @@ def generate_hotspots() -> List[Dict[str, Any]]:
                 "land_context": "cropland",
                 "distance_to_facility_m": None,
                 "source": "SIMULATED_DEMO",
+                "synthetic_label": "AGRICULTURAL_BURNING",
             }
         )
 
@@ -256,6 +261,7 @@ def generate_hotspots() -> List[Dict[str, Any]]:
             "land_context": "unassigned scrubland",
             "distance_to_facility_m": None,
             "source": "SIMULATED_DEMO",
+            "synthetic_label": "UNCLASSIFIED",
         }
     )
 

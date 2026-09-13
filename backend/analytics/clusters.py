@@ -40,9 +40,9 @@ def build_persistent_clusters(hotspots: List[Dict[str, Any]]) -> List[Dict[str, 
         )
         mean_frp = round(sum(record["frp"] for record in records) / len(records), 2)
         peak_frp = max(record["frp"] for record in records)
-        mean_risk = round(
-            sum(record.get("risk_score", 50.0) for record in records) / len(records),
-            1,
+        peak_risk = max(
+        float(record.get("risk_score", 0.0))
+        for record in records
         )
 
         # Determine dominant classification in this cluster
@@ -63,11 +63,11 @@ def build_persistent_clusters(hotspots: List[Dict[str, Any]]) -> List[Dict[str, 
         )
 
         # Determine risk level tier based on standardized thresholds
-        if mean_risk >= 75.0 or dominant_class == "INDUSTRIAL_FIRE":
+        if peak_risk >= 75.0:
             cluster_risk_level = "CRITICAL"
-        elif mean_risk >= 50.0:
+        elif peak_risk >= 50.0:
             cluster_risk_level = "HIGH"
-        elif mean_risk >= 25.0:
+        elif peak_risk >= 25.0:
             cluster_risk_level = "MEDIUM"
         else:
             cluster_risk_level = "LOW"
@@ -92,7 +92,7 @@ def build_persistent_clusters(hotspots: List[Dict[str, Any]]) -> List[Dict[str, 
                 "detection_count": len(records),
                 "mean_frp": mean_frp,
                 "peak_frp": peak_frp,
-                "risk_score": mean_risk,
+                "risk_score": round(peak_risk, 1),
                 "risk_level": cluster_risk_level,
                 "risk_breakdown": dominant_record.get("risk_breakdown", {}),
                 "risk_explanation": dominant_record.get("risk_explanation", ""),

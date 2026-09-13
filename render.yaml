@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: otip-backend
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install --upgrade pip && pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: PYTHONPATH
+        value: .
+      - key: FIRMS_MAP_KEY
+        sync: false
+      - key: FIRMS_BBOX
+        value: 68.1,6.7,97.4,35.5
+      - key: FIRMS_DAYS
+        value: 3
+      - key: FIRMS_SOURCE
+        value: VIIRS_SNPP_NRT
+      - key: FIRMS_CACHE_TTL_SECONDS
+        value: 900
+      - key: ORS_API_KEY
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false

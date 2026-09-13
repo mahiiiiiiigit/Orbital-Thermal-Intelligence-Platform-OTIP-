@@ -1,0 +1,35 @@
+# Git and IDE
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+
+# Environments and caches
+.venv
+venv
+ENV
+env
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.cache
+backend/ingestion/.cache
+
+# Node and Vite
+node_modules
+frontend/node_modules
+dist
+frontend/dist
+.vite
+frontend/.vite
+
+# Large FIRMS raw datasets (600MB+ CSV files)
+data/firms/
+*.csv
+*.zip
+
+# Logs and scratch files
+*.log
+scratch/

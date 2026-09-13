@@ -13,8 +13,6 @@ import {
   Building2,
   Home,
   CheckCircle2,
-  MapPin,
-  Compass,
 } from 'lucide-react';
 import { fetchEmergencyRoute, fetchNearestSafetyResources, getDossierDownloadUrl } from '../services/api';
 import { TAXONOMY_COLORS } from '../constants/taxonomy';
@@ -22,8 +20,10 @@ import { TAXONOMY_COLORS } from '../constants/taxonomy';
 export function EventInvestigationModal({
   event, // Cluster or Hotspot object
   mode = 'auto',
+  activeRoute = null,
   onClose,
   onSetRoute,
+  onClearRoute,
   onShowTemporaryResources,
   showingTemporaryResources = false,
 }) {
@@ -33,10 +33,9 @@ export function EventInvestigationModal({
 
   const [triageData, setTriageData] = useState(null);
   const [loadingTriage, setLoadingTriage] = useState(true);
-  const [searchRadius, setSearchRadius] = useState(10);
 
-  const lat = event?.latitude;
-  const lon = event?.longitude;
+  const lat = event?.latitude ?? event?.lat;
+  const lon = event?.longitude ?? event?.lon;
 
   useEffect(() => {
     if (!lat || !lon) return;
@@ -49,7 +48,6 @@ export function EventInvestigationModal({
       classification: event.classification || 'UNCLASSIFIED',
       frp: event.peak_frp || event.frp || 25.0,
       riskScore: event.risk_score || 50.0,
-      radiusKm: searchRadius,
     })
       .then((data) => {
         if (isMounted) {
@@ -65,7 +63,7 @@ export function EventInvestigationModal({
     return () => {
       isMounted = false;
     };
-  }, [lat, lon, event?.classification, event?.peak_frp, event?.frp, event?.risk_score, searchRadius]);
+  }, [lat, lon, event?.classification, event?.peak_frp, event?.frp, event?.risk_score]);
 
   if (!event) return null;
 
@@ -75,97 +73,50 @@ export function EventInvestigationModal({
   const riskLevel = event.risk_level ? String(event.risk_level).toUpperCase() : (riskScore >= 75 ? 'CRITICAL' : (riskScore >= 50 ? 'HIGH' : 'MEDIUM'));
   const isAbnormal = event.is_anomaly || event.classification === 'INDUSTRIAL_FIRE' || riskScore >= 70;
 
-  const siteNameFromTriage = triageData?.site_name;
-  const rawFacilityName = event.facility_name || event.forest_name || event.cluster_id;
-  const isCoordPlaceholder = !rawFacilityName || /^Site \(\d+.*,\s*\d+.*\)$/i.test(rawFacilityName) || /^Unregistered Site/i.test(rawFacilityName);
-  const eventTitle = (!isCoordPlaceholder && rawFacilityName) || siteNameFromTriage || (rawFacilityName && !rawFacilityName.startsWith('Site (') ? rawFacilityName : null) || (siteNameFromTriage || `Site (${Number(lat).toFixed(2)}, ${Number(lon).toFixed(2)})`);
+  const eventTitle = event.facility_name || event.forest_name || event.cluster_id || 'Thermal Anomaly Target';
   const dossierUrl = getDossierDownloadUrl(event.cluster_id || event.id || `${lat},${lon}`, mode);
   const nearest = triageData?.nearest_resources || triageData?.nearest || {};
   const sop = triageData?.recommended_response || {};
-  const facilities = triageData?.facilities && triageData.facilities.length > 0
-    ? triageData.facilities
-    : Object.values(nearest).filter(Boolean);
-
-  const getFacilityIcon = (type) => {
-    switch (type) {
-      case 'fire_station':
-        return <Flame className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />;
-      case 'hospital':
-        return <Activity className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />;
-      case 'police':
-        return <Building2 className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />;
-      case 'shelter':
-        return <Home className="w-3.5 h-3.5 text-purple-400 flex-shrink-0" />;
-      case 'disaster_management':
-        return <ShieldAlert className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />;
-      default:
-        return <Building2 className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />;
-    }
-  };
-
-  const getFacilityBadgeClass = (type) => {
-    switch (type) {
-      case 'fire_station':
-        return 'bg-red-500/10 text-red-400 border-red-500/30';
-      case 'hospital':
-        return 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30';
-      case 'police':
-        return 'bg-blue-500/10 text-blue-400 border-blue-500/30';
-      case 'shelter':
-        return 'bg-purple-500/10 text-purple-400 border-purple-500/30';
-      case 'disaster_management':
-        return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
-      default:
-        return 'bg-slate-700/50 text-slate-300 border-slate-600';
-    }
-  };
 
   const handleRouteToDepot = async (depot) => {
-    if (!depot) return;
-    setLoadingRoute(true);
-    setRouteError(null);
-    try {
-      const data = await fetchEmergencyRoute(lat, lon, depot.latitude, depot.longitude);
-      if (data) {
-        if (data.origin_depot) {
-          data.origin_depot.name = depot.name;
-        }
-        data.target_event = event;
-        data.destination_resource = depot;
-      }
-      setRouteData(data);
-      if (onSetRoute) onSetRoute(data);
-    } catch (err) {
-      console.error(err);
-      setRouteError('Failed to calculate emergency dispatch route');
-    } finally {
-      setLoadingRoute(false);
+    if (!depot) {
+      console.warn('[Routing] Route button clicked but no depot resource was provided');
+      return;
     }
-  };
+    console.log('[Routing] Route button clicked:', { depot, event });
 
-  const handleShowFacilityOnMap = async (depot) => {
-    if (!depot) return;
     setLoadingRoute(true);
     setRouteError(null);
     try {
-      const data = await fetchEmergencyRoute(lat, lon, depot.latitude, depot.longitude);
-      if (data) {
-        if (data.origin_depot) {
-          data.origin_depot.name = depot.name;
-        }
-        data.target_event = event;
-        data.destination_resource = depot;
+      const eventLat = Number(lat);
+      const eventLon = Number(lon);
+      const depotLat = Number(depot.latitude);
+      const depotLon = Number(depot.longitude);
+
+      if (isNaN(eventLat) || isNaN(eventLon) || isNaN(depotLat) || isNaN(depotLon)) {
+        throw new Error(`Invalid dispatch coordinates: Incident (${lat}, ${lon}), Depot (${depot.latitude}, ${depot.longitude})`);
       }
+
+      const data = await fetchEmergencyRoute(eventLat, eventLon, depotLat, depotLon);
+      if (data && data.origin_depot) {
+        data.origin_depot.name = depot.name || data.origin_depot.name;
+      }
+
+      // Validate route geometry
+      const coords = data?.route?.coordinates;
+      if (!coords || !Array.isArray(coords) || coords.length === 0) {
+        throw new Error('Received empty route geometry from routing engine');
+      }
+
       setRouteData(data);
-      if (onShowTemporaryResources) {
-        onShowTemporaryResources([depot]);
-      }
+
+      // Commit to global activeRoute state and close modal
       if (onSetRoute) {
         onSetRoute(data);
       }
     } catch (err) {
-      console.error(err);
-      setRouteError('Failed to plot route to facility');
+      console.error('[Routing] Error calculating route:', err);
+      setRouteError(err.message || 'Failed to calculate emergency dispatch route');
     } finally {
       setLoadingRoute(false);
     }
@@ -176,7 +127,7 @@ export function EventInvestigationModal({
     if (showingTemporaryResources) {
       onShowTemporaryResources([]);
     } else {
-      const list = facilities.length > 0 ? facilities : Object.values(nearest).filter(Boolean);
+      const list = Object.values(nearest).filter(Boolean);
       onShowTemporaryResources(list);
     }
   };
@@ -193,7 +144,7 @@ export function EventInvestigationModal({
 
   return (
     <div
-      className="fixed inset-0 z-[9999] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn select-text"
+      className="fixed inset-0 z-[2000] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn select-text"
       onClick={onClose}
     >
       <div
@@ -230,11 +181,6 @@ export function EventInvestigationModal({
               <h2 className="text-lg font-extrabold text-white mt-1 leading-snug">
                 {eventTitle}
               </h2>
-              {lat && lon && (
-                <span className="text-[11px] font-mono text-slate-400 font-medium block mt-0.5">
-                  Coordinates: {Number(lat).toFixed(4)}° N, {Number(lon).toFixed(4)}° E
-                </span>
-              )}
             </div>
           </div>
 
@@ -382,152 +328,188 @@ export function EventInvestigationModal({
 
           {/* Right Column: Safety Infrastructure & Response Options (5 Cols) */}
           <div className="md:col-span-5 space-y-4">
-            {/* Nearest Safety Depots (Live OpenStreetMap / Overpass Data) */}
+            {/* Nearest First-Responder Depots */}
             <div className="bg-dark-850 border border-dark-700 rounded-xl p-4 space-y-3">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs font-bold text-slate-300 uppercase tracking-wider">
                   <Building2 className="w-4 h-4 text-emerald-400" />
                   <span>Nearest Safety Depots</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleToggleMapResources}
-                    className="px-2 py-0.5 rounded border border-dark-700 hover:bg-dark-750 text-slate-300 flex items-center gap-1 text-[10px] transition-colors"
-                    title="Plot all safety depot markers on map"
-                  >
-                    {showingTemporaryResources ? (
-                      <>
-                        <EyeOff className="w-3 h-3 text-amber-400" />
-                        <span>Hide Map Icons</span>
-                      </>
-                    ) : (
-                      <>
-                        <Eye className="w-3 h-3 text-sky-400" />
-                        <span>Show on Map</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Radius / OSM Status Bar */}
-              <div className="flex items-center justify-between text-[10.5px] text-slate-400 bg-dark-900/80 px-2.5 py-1.5 rounded-lg border border-dark-750">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>OSM / Overpass Live</span>
-                  {triageData?.auto_expanded && (
-                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                      Auto-Expanded
-                    </span>
+                <button
+                  type="button"
+                  onClick={handleToggleMapResources}
+                  className="px-2 py-0.5 rounded border border-dark-700 hover:bg-dark-750 text-slate-300 flex items-center gap-1 text-[10px] transition-colors"
+                >
+                  {showingTemporaryResources ? (
+                    <>
+                      <EyeOff className="w-3 h-3 text-amber-400" />
+                      <span>Hide Map Icons</span>
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="w-3 h-3 text-sky-400" />
+                      <span>Show on Map</span>
+                    </>
                   )}
-                </span>
-                <span className="font-mono text-slate-300">
-                  Radius: <strong className="text-sky-400">{triageData?.search_radius_km || searchRadius} km</strong>
-                </span>
+                </button>
               </div>
 
               {loadingTriage ? (
-                <div className="py-6 text-center text-xs text-slate-400 space-y-2">
-                  <div className="w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto" />
-                  <span>Querying OpenStreetMap for emergency infrastructure...</span>
-                </div>
-              ) : facilities && facilities.length > 0 ? (
-                <div className="space-y-2 text-xs max-h-[340px] overflow-y-auto pr-1">
-                  {facilities.slice(0, 6).map((fac, idx) => (
-                    <div
-                      key={fac.id || `${fac.latitude}-${fac.longitude}-${idx}`}
-                      className="bg-dark-900 border border-dark-750 hover:border-dark-700 rounded-lg p-2.5 space-y-2 transition-all shadow-sm"
-                    >
-                      <div className="flex justify-between items-start gap-2">
-                        <div className="flex items-start gap-2 min-w-0">
-                          {getFacilityIcon(fac.type)}
-                          <div className="min-w-0">
-                            <span className="font-semibold text-slate-100 text-xs block truncate" title={fac.name}>
-                              {fac.name}
-                            </span>
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                              <span className={`px-1.5 py-0.2 rounded text-[9.5px] font-bold border ${getFacilityBadgeClass(fac.type)}`}>
-                                {fac.type_label || fac.type?.replace('_', ' ').toUpperCase()}
-                              </span>
-                              <span className="text-[10px] text-slate-400 font-mono">
-                                {Number(fac.latitude).toFixed(4)}° N, {Number(fac.longitude).toFixed(4)}° E
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <span className="font-mono text-sky-400 font-bold text-xs block">
-                            {fac.distance_km} km
-                          </span>
-                          <span className="text-[10px] text-emerald-400 font-mono">
-                            ~{fac.estimated_travel_time_mins || 5} min
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between pt-1.5 border-t border-dark-750 text-[10px] text-slate-400">
-                        <span className="truncate max-w-[140px]" title={fac.source || 'OpenStreetMap'}>
-                          {fac.source?.includes('OpenStreetMap') ? 'OSM Live Data' : 'DDMP Registry'}
-                        </span>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleShowFacilityOnMap(fac)}
-                            disabled={loadingRoute}
-                            className="px-2 py-0.5 rounded bg-dark-800 hover:bg-dark-750 border border-dark-700 text-sky-300 hover:text-white font-medium flex items-center gap-1 transition-colors"
-                            title="Zoom to facility and draw emergency route"
-                          >
-                            <MapPin className="w-2.5 h-2.5 text-sky-400" />
-                            <span>Show on Map</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleRouteToDepot(fac)}
-                            disabled={loadingRoute}
-                            className="px-2 py-0.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold flex items-center gap-1 transition-colors shadow-sm"
-                            title="Calculate emergency dispatch route"
-                          >
-                            <Navigation className="w-2.5 h-2.5" />
-                            <span>Route</span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                <div className="py-4 text-center text-xs text-slate-500">
+                  Locating nearest emergency response assets...
                 </div>
               ) : (
-                <div className="bg-dark-900 border border-dark-750 rounded-lg p-3 text-center space-y-2">
-                  <p className="text-xs text-slate-400">
-                    No emergency facilities located within {searchRadius} km.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setSearchRadius((r) => Math.min(50, r + 15))}
-                    className="px-3 py-1 rounded bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors"
-                  >
-                    <Compass className="w-3.5 h-3.5" />
-                    <span>Expand Search Radius to {Math.min(50, searchRadius + 15)} km</span>
-                  </button>
-                </div>
-              )}
-
-              {/* Active Route Status if calculated */}
-              {routeData && (
-                <div className="pt-2 border-t border-dark-700/80">
-                  <div className="bg-dark-900 border border-amber-500/40 rounded-lg p-2.5 flex justify-between items-center text-xs">
-                    <div>
-                      <span className="text-[10px] text-amber-400 uppercase font-bold block">Active Dispatch Route</span>
-                      <span className="text-slate-200 font-medium">
-                        {routeData.origin_depot?.name} → Incident
-                      </span>
+                <div className="space-y-2 text-xs">
+                  {/* 1. Fire Station */}
+                  {nearest.fire_station ? (
+                    <div className="bg-dark-900 border border-dark-750 rounded-lg p-2.5 space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold text-slate-200 text-xs">
+                          {nearest.fire_station.name}
+                        </span>
+                        <span className="font-mono text-sky-400 font-bold text-xs">
+                          {nearest.fire_station.distance_km} km
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-[10px] text-slate-400 pt-1 border-t border-dark-750">
+                        <span>ETA: <strong className="text-emerald-400 font-mono">~{nearest.fire_station.estimated_travel_time_mins || 6} min</strong></span>
+                        <button
+                          type="button"
+                          onClick={() => handleRouteToDepot(nearest.fire_station)}
+                          disabled={loadingRoute}
+                          className="px-2 py-0.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold flex items-center gap-1 transition-colors"
+                        >
+                          <Navigation className="w-2.5 h-2.5" />
+                          <span>Route</span>
+                        </button>
+                      </div>
                     </div>
-                    <span className="font-mono text-emerald-400 font-bold">
-                      {routeData.route?.distance_km} km / {routeData.route?.duration_minutes} min
-                    </span>
+                  ) : null}
+
+                  {/* 2. Hospital / Trauma Care */}
+                  {nearest.hospital ? (
+                    <div className="bg-dark-900 border border-dark-750 rounded-lg p-2.5 space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold text-slate-200 text-xs">
+                          {nearest.hospital.name}
+                        </span>
+                        <span className="font-mono text-sky-400 font-bold text-xs">
+                          {nearest.hospital.distance_km} km
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-[10px] text-slate-400 pt-1 border-t border-dark-750">
+                        <span>ETA: <strong className="text-emerald-400 font-mono">~{nearest.hospital.estimated_travel_time_mins || 10} min</strong></span>
+                        <button
+                          type="button"
+                          onClick={() => handleRouteToDepot(nearest.hospital)}
+                          disabled={loadingRoute}
+                          className="px-2 py-0.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold flex items-center gap-1 transition-colors"
+                        >
+                          <Navigation className="w-2.5 h-2.5" />
+                          <span>Route</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* 3. Police Station */}
+                  {nearest.police ? (
+                    <div className="bg-dark-900 border border-dark-750 rounded-lg p-2.5 space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold text-slate-200 text-xs">
+                          {nearest.police.name}
+                        </span>
+                        <span className="font-mono text-sky-400 font-bold text-xs">
+                          {nearest.police.distance_km} km
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-[10px] text-slate-400 pt-1 border-t border-dark-750">
+                        <span>ETA: <strong className="text-emerald-400 font-mono">~{nearest.police.estimated_travel_time_mins || 8} min</strong></span>
+                        <button
+                          type="button"
+                          onClick={() => handleRouteToDepot(nearest.police)}
+                          disabled={loadingRoute}
+                          className="px-2 py-0.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold flex items-center gap-1 transition-colors"
+                        >
+                          <Navigation className="w-2.5 h-2.5" />
+                          <span>Route</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* 4. Evacuation / Safe Shelter */}
+                  <div className="bg-dark-900 border border-dark-750 rounded-lg p-2.5 space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold text-slate-200 text-xs flex items-center gap-1">
+                        <Home className="w-3.5 h-3.5 text-amber-400" />
+                        <span>{nearest.shelter ? nearest.shelter.name : 'Designated Safe Shelter'}</span>
+                      </span>
+                      {nearest.shelter && (
+                        <span className="font-mono text-sky-400 font-bold text-xs">
+                          {nearest.shelter.distance_km} km
+                        </span>
+                      )}
+                    </div>
+                    {nearest.shelter ? (
+                      <div className="flex justify-between items-center text-[10px] text-slate-400 pt-1 border-t border-dark-750">
+                        <span>ETA: <strong className="text-emerald-400 font-mono">~{nearest.shelter.estimated_travel_time_mins || 12} min</strong></span>
+                        <button
+                          type="button"
+                          onClick={() => handleRouteToDepot(nearest.shelter)}
+                          disabled={loadingRoute}
+                          className="px-2 py-0.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold flex items-center gap-1 transition-colors"
+                        >
+                          <Navigation className="w-2.5 h-2.5" />
+                          <span>Route</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-[10.5px] text-slate-500 italic pt-1 border-t border-dark-750">
+                        No verified evacuation point available for this location.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
+
+              {/* Active Route Status if calculated or active in global state */}
+              {(activeRoute || routeData) && (() => {
+                const current = activeRoute || routeData;
+                return (
+                  <div className="pt-2 border-t border-dark-700/80">
+                    <div className="bg-dark-900 border border-amber-500/40 rounded-lg p-2.5 flex justify-between items-center text-xs">
+                      <div>
+                        <span className="text-[10px] text-amber-400 uppercase font-bold flex items-center gap-1">
+                          <Navigation className="w-3 h-3 text-amber-400" />
+                          <span>Active Dispatch Route</span>
+                        </span>
+                        <span className="text-slate-200 font-medium truncate block max-w-[200px]">
+                          {current.origin_depot?.name || 'Emergency Base'} → Incident
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-emerald-400 font-bold">
+                          {current.route?.distance_km} km / {current.route?.duration_minutes} min
+                        </span>
+                        {onClearRoute && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRouteData(null);
+                              onClearRoute();
+                            }}
+                            className="px-2 py-0.5 rounded bg-dark-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 border border-dark-700 hover:border-red-500/40 text-[10px] transition-colors cursor-pointer"
+                            title="Clear active route"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>

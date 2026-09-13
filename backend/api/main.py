@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 
 from backend.analytics.anomaly_detector import detect_anomalies
@@ -35,6 +36,7 @@ from backend.analytics.safety_infrastructure import (
 from backend.analytics.facility_registry import KNOWN_FACILITIES
 from backend.analytics.spatial import distance_metres
 from backend.analytics.thermal_fingerprint import build_facility_thermal_profile
+from backend.analytics.ml_classifier import DEFAULT_MODEL_PATH, load_model, predict_live_firms
 from backend.reports.dossier_generator import generate_dossier
 
 # Load environment variables from .env file if available
@@ -42,10 +44,57 @@ project_root = Path(__file__).resolve().parents[2]
 load_dotenv(project_root / ".env", override=True)
 load_dotenv(override=True)
 
+
+# Production ML model is loaded once on first live prediction request.
+_ml_model = None
+
+def _get_ml_model():
+    global _ml_model
+    if _ml_model is None:
+        try:
+            _ml_model = load_model(DEFAULT_MODEL_PATH)
+        except (FileNotFoundError, TypeError) as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Live ML classifier is not initialized. Train the production model first "
+                    "with: python -m backend.analytics.train_production_ml_model. "
+                    f"Details: {exc}"
+                ),
+            ) from exc
+    return _ml_model
+
+
 app = FastAPI(
     title="ThermalWatch API",
     description="AI-assisted thermal intelligence platform for industrial fire and emission anomaly detection (SIH26162).",
     version="1.0.0",
+)
+
+# Browser clients (Vercel frontend in production) call the Render/Docker API
+# from a different origin. Configure allowed origins through FRONTEND_ORIGIN
+# (comma-separated or '*' for public access).
+_raw_origins = os.getenv(
+    "FRONTEND_ORIGIN",
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000",
+).strip()
+
+if _raw_origins == "*":
+    _cors_origins = ["*"]
+else:
+    _cors_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
+# Regex to automatically permit Vercel preview branches and subdomains
+_cors_origin_regex = os.getenv("FRONTEND_ORIGIN_REGEX", r"^https:\/\/.*\.vercel\.app$")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_origin_regex=_cors_origin_regex if _cors_origins != ["*"] else None,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Content-Disposition", "Content-Type", "Content-Length"],
 )
 
 
@@ -114,7 +163,37 @@ def _get_active_hotspots(
             f"Retrieved {len(raw_hotspots)} satellite detections from NASA FIRMS ({meta.get('source')}). "
             f"{'Served from cache.' if meta.get('cached') else 'Fresh satellite feed.'}"
         )
-        return classify_hotspots(raw_hotspots), resolved_mode, notice, meta
+        classified_hotspots = classify_hotspots(raw_hotspots)
+        if resolved_mode in {"live", "cached"}:
+            try:
+                ml_model = _get_ml_model()
+                ml_hotspots, ml_meta = predict_live_firms(classified_hotspots, ml_model)
+                ml_by_id = {str(item.get("id")): item for item in ml_hotspots}
+                for item in classified_hotspots:
+                    ml_item = ml_by_id.get(str(item.get("id")))
+                    if ml_item:
+                        for field in (
+                            "ml_classification",
+                            "ml_raw_classification",
+                            "ml_status",
+                            "ml_source_cell",
+                        ):
+                            if field in ml_item:
+                                item[field] = ml_item[field]
+                meta = {**meta, "ml": ml_meta}
+            except HTTPException:
+                if mode == "live":
+                    raise
+                meta = {
+                    **meta,
+                    "ml": {
+                        "enabled": False,
+                        "reason": "Production ML model artifact is not initialized.",
+                    },
+                }
+        return classified_hotspots, resolved_mode, notice, meta
+    except HTTPException:
+        raise
     except Exception as e:
         if mode == "live":
             raise HTTPException(
@@ -150,12 +229,20 @@ def home():
 
 
 @app.get("/health")
+@app.get("/api/v1/health")
 def health_check():
-    load_dotenv(project_root / ".env", override=True)
+    firms_key = os.getenv("FIRMS_MAP_KEY")
+    ors_key = os.getenv("ORS_API_KEY") or os.getenv("OPENROUTE_MAP_KEY")
+    model_loaded = _ml_model is not None or DEFAULT_MODEL_PATH.exists()
     return {
         "status": "ok",
-        "firms_key_configured": bool(os.getenv("FIRMS_MAP_KEY")),
+        "service": "ThermalWatch API",
+        "version": "1.0.0",
+        "firms_key_configured": bool(firms_key and "your_" not in firms_key),
+        "routing_key_configured": bool(ors_key and "your_" not in ors_key),
+        "ml_model_available": model_loaded,
     }
+
 
 
 @app.get("/api/v1/firms/status")
@@ -221,6 +308,7 @@ def get_live_data(
             "source": source,
         },
         "metadata": meta,
+        "ml": meta.get("ml", {"enabled": False}),
         "total_hotspots": len(classified_hotspots),
         "hotspots": classified_hotspots,
     }
@@ -719,3 +807,11 @@ def download_dossier(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{cluster_id}-dossier.pdf"'},
     )
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    port = int(os.getenv("PORT", "8000"))
+    host = os.getenv("HOST", "0.0.0.0")
+    uvicorn.run("backend.api.main:app", host=host, port=port, reload=False)

@@ -153,7 +153,9 @@ def build_facility_thermal_profile(
         std_dev_frp = std_dev_calc
         deviation_mw = round(current_frp - avg_frp, 2)
         pct_deviation = round(((current_frp - avg_frp) / avg_frp) * 100.0, 1) if avg_frp > 0 else 0.0
-        z_score = round((current_frp - avg_frp) / std_dev_frp, 2) if std_dev_frp > 0 else 0.0
+        z_score = current_record.get("z_score")
+        baseline_mean_frp = current_record.get("baseline_mean_frp")
+        
 
         # Count anomalies (Z >= 2.5 or Industrial Fire)
         anomalies_count = 0
@@ -190,10 +192,10 @@ def build_facility_thermal_profile(
 
         if z_score >= 3.0 or current_classification == "INDUSTRIAL_FIRE":
             status = "ABNORMAL"
-            status_reason = f"Current FRP ({current_frp} MW) is {z_score} standard deviations above the facility's historical mean ({avg_frp} MW)."
+            status_reason = f"Current FRP ({current_frp} MW) is {z_score} standard deviations above the facility's historical baseline ({baseline_mean_frp} MW)."
         elif z_score >= 1.5 or current_frp > normal_max:
             status = "ELEVATED"
-            status_reason = f"Elevated thermal radiance detected ({current_frp} MW, +{z_score}σ above mean {avg_frp} MW)."
+            status_reason = f"Elevated thermal radiance detected ({current_frp} MW, +{z_score}σ above baseline {baseline_mean_frp} MW)."
         else:
             status = "NORMAL"
             status_reason = f"Operating normally within the expected historical baseline range ({normal_min} – {normal_max} MW)."

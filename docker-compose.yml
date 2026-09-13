@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: otip-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      - PORT=8000
+      - FIRMS_MAP_KEY=${FIRMS_MAP_KEY:-}
+      - FIRMS_BBOX=${FIRMS_BBOX:-68.1,6.7,97.4,35.5}
+      - FIRMS_DAYS=${FIRMS_DAYS:-3}
+      - FIRMS_SOURCE=${FIRMS_SOURCE:-VIIRS_SNPP_NRT}
+      - FIRMS_CACHE_TTL_SECONDS=${FIRMS_CACHE_TTL_SECONDS:-900}
+      - ORS_API_KEY=${ORS_API_KEY:-}
+      - OPENROUTE_MAP_KEY=${OPENROUTE_MAP_KEY:-}
+      - CARTO_API_KEY=${CARTO_API_KEY:-}
+      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-http://localhost,http://localhost:80,http://localhost:3000,http://localhost:5173}
+    volumes:
+      - firms_cache_data:/app/backend/ingestion/.cache
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: otip-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_BASE_URL=
+
+volumes:
+  firms_cache_data:
+    driver: local

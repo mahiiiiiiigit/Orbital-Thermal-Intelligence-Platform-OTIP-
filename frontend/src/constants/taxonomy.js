@@ -34,11 +34,12 @@ export const SENSORS = [
 ];
 
 export const THERMAL_GRADIENT = {
-  0.10: '#3b82f6', // Blue: Very Low (<10 MW)
-  0.28: '#22c55e', // Green: Low (10-25 MW)
-  0.52: '#facc15', // Yellow: Moderate (25-50 MW)
-  0.75: '#f97316', // Orange: High (50-80 MW)
-  1.00: '#ef4444', // Red: Extreme (>80 MW)
+  0.15: '#fde047', // Neon Yellow (Low Thermal Anomaly)
+  0.35: '#facc15', // Bright Amber (Moderate Heat)
+  0.60: '#fb923c', // Warm Orange (Elevated FRP)
+  0.80: '#f97316', // Neon Orange-Red (High Radiance)
+  0.95: '#ef4444', // Vivid Red (Critical Fire)
+  1.00: '#b91c1c', // Deep Crimson (Extreme Surge)
 };
 
 // Forest Survey of India (FSI) Forest Fire Danger Rating (FFDR) Categories & Color Scales
