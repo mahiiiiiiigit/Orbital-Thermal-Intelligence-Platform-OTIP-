@@ -515,13 +515,14 @@ def get_nearest_safety_resources(
     frp: float = Query(25.0, description="Radiative Power (MW)"),
     risk_score: float = Query(50.0, description="Risk Score (0-100)"),
     radius_km: float = Query(10.0, ge=1.0, le=100.0, description="Search radius in kilometers (5-10 km default)"),
+    mode: str = Query("auto", pattern="^(auto|live|demo)$", description="Operational mode"),
 ):
     """
     Returns incident response triage packet containing nearest Fire, Hospital, Police,
     Ambulance, and Shelter facilities from live OpenStreetMap Overpass data, sorted by distance,
     with national emergency numbers (112) and classification SOPs.
     """
-    osm_result = fetch_osm_safety_facilities(latitude=lat, longitude=lon, radius_km=radius_km)
+    osm_result = fetch_osm_safety_facilities(latitude=lat, longitude=lon, radius_km=radius_km, mode=mode)
     nearest_map = osm_result.get("nearest_by_type", {})
     facilities_list = osm_result.get("facilities", [])
     sop = get_recommended_response_sop(classification=classification, risk_level="CRITICAL" if risk_score >= 80 else "HIGH", frp=frp)
@@ -551,7 +552,7 @@ def get_nearest_safety_resources(
         },
         "recommended_response": sop,
         "source_label": "OpenStreetMap Overpass API & District Disaster Management Registry",
-        "is_demo": False,
+        "is_demo": mode == "demo",
     }
 
 

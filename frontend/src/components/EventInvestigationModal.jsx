@@ -48,6 +48,7 @@ export function EventInvestigationModal({
       classification: event.classification || 'UNCLASSIFIED',
       frp: event.peak_frp || event.frp || 25.0,
       riskScore: event.risk_score || 50.0,
+      mode,
     })
       .then((data) => {
         if (isMounted) {
@@ -63,7 +64,7 @@ export function EventInvestigationModal({
     return () => {
       isMounted = false;
     };
-  }, [lat, lon, event?.classification, event?.peak_frp, event?.frp, event?.risk_score]);
+  }, [lat, lon, event?.classification, event?.peak_frp, event?.frp, event?.risk_score, mode]);
 
   if (!event) return null;
 

@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "build": "npm --prefix frontend install && npm --prefix frontend run build && rm -rf dist && cp -r frontend/dist ./dist"
+    "build": "npm --prefix frontend ci && npm --prefix frontend run build && rm -rf dist && cp -r frontend/dist ./dist"
   },
   "dependencies": {
     "vite": "^5.4.3"

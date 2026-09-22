@@ -62,6 +62,7 @@ export function HotspotCard({
         ...(hotspot.risk_score != null && Number.isFinite(Number(hotspot.risk_score))
           ? { riskScore: Number(hotspot.risk_score) }
           : {}),
+        mode: hotspot.is_demo ? 'demo' : 'auto',
       });
       setTriageData(data);
     } catch (err) {

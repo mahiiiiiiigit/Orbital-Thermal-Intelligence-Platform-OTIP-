@@ -331,6 +331,62 @@ SAFETY_RESOURCES_REGISTRY: List[Dict[str, Any]] = [
         "is_demo": True,
         "notes": "Designated safe assembly center; capacity: 1,200 persons with backup power",
     },
+    {
+        "id": "res-fire-guj-haz-01",
+        "name": "Hazira Industrial Area Fire Station (GIDC)",
+        "type": "fire_station",
+        "latitude": 21.1120,
+        "longitude": 72.6510,
+        "state": "Gujarat",
+        "district": "Surat",
+        "contact": "112 / 101",
+        "source": "Gujarat Industrial Development Corporation (GIDC) Fire Wing",
+        "last_verified": "2026-05-15",
+        "is_demo": True,
+        "notes": "Dedicated petrochemical emergency foam monitors and chemical hazard squad",
+    },
+    {
+        "id": "res-hosp-guj-haz-01",
+        "name": "Reliance Hospital & Occupational Health Center (Hazira)",
+        "type": "hospital",
+        "latitude": 21.1260,
+        "longitude": 72.6490,
+        "state": "Gujarat",
+        "district": "Surat",
+        "contact": "112 / 108",
+        "source": "Surat District Health Authority & Disaster Management",
+        "last_verified": "2026-05-15",
+        "is_demo": True,
+        "notes": "24/7 Industrial Trauma, Toxic Inhalation Care, and Advanced Burn Ward",
+    },
+    {
+        "id": "res-pol-guj-haz-01",
+        "name": "Hazira Marine & Industrial Police Station",
+        "type": "police",
+        "latitude": 21.1180,
+        "longitude": 72.6440,
+        "state": "Gujarat",
+        "district": "Surat",
+        "contact": "112 / 100",
+        "source": "Surat City Police Commissionerate",
+        "last_verified": "2026-05-15",
+        "is_demo": True,
+        "notes": "Industrial corridor security, hazard evacuation command, and port perimeter control",
+    },
+    {
+        "id": "res-she-guj-haz-01",
+        "name": "Hazira Coastal & Community Cyclone Relief Center",
+        "type": "shelter",
+        "latitude": 21.1080,
+        "longitude": 72.6350,
+        "state": "Gujarat",
+        "district": "Surat",
+        "contact": "112 / 1077 (Surat DEOC)",
+        "source": "Surat District Emergency Operation Centre",
+        "last_verified": "2026-05-15",
+        "is_demo": True,
+        "notes": "Reinforced emergency shelter with industrial gas filtration safe room",
+    },
 
     # =========================================================================
     # 5. PUNJAB & HARYANA AGRI-INDUSTRIAL CORRIDOR (Panipat, Ludhiana, Amritsar)
@@ -559,6 +615,11 @@ def _synthesize_local_emergency_resource(
             "contact": "112 / 1077",
             "notes": "Reinforced community emergency shelter; capacity: 600 persons with backup generator",
         },
+        "disaster_management": {
+            "name": "District Disaster Management Emergency Control Room (DEOC)",
+            "contact": "112 / 1078",
+            "notes": "District Emergency Operations Centre & Civil Defense Command",
+        },
     }
 
     config = type_configs.get(resource_type, type_configs["fire_station"])
@@ -654,6 +715,7 @@ def fetch_osm_safety_facilities(
     longitude: float,
     radius_km: float = 10.0,
     max_results: int = 15,
+    mode: str = "auto",
 ) -> Dict[str, Any]:
     """
     Fetches real safety and emergency infrastructure around the hotspot coordinates using OpenStreetMap (Overpass API).
@@ -665,17 +727,19 @@ def fetch_osm_safety_facilities(
     4. Calculates distance from hotspot using Haversine formula and sorts by nearest distance.
     5. Returns at least the nearest facilities with Name, Type, Distance, Coordinates, and ETA.
     6. Seamlessly backfills from verified regional disaster management registry if OSM has gaps.
+    7. Fast timeout & instant fallback to ensure zero UI freezing.
     """
     # 1. Log hotspot coordinates received
     logger.info(
-        "[OSM Safety] Hotspot coordinates received: lat=%.5f, lon=%.5f, initial_radius=%.1f km",
+        "[OSM Safety] Hotspot coordinates received: lat=%.5f, lon=%.5f, initial_radius=%.1f km, mode=%s",
         latitude,
         longitude,
         radius_km,
+        mode,
     )
 
     # Check in-memory cache
-    cache_key = f"{round(latitude, 3)}:{round(longitude, 3)}:{round(radius_km, 1)}"
+    cache_key = f"{round(latitude, 3)}:{round(longitude, 3)}:{round(radius_km, 1)}:{mode}"
     now = time.time()
     if cache_key in _OSM_CACHE:
         cached_time, cached_data = _OSM_CACHE[cache_key]
@@ -683,37 +747,35 @@ def fetch_osm_safety_facilities(
             logger.info("[OSM Safety] Returning cached OSM safety facilities for %s", cache_key)
             return cached_data
 
-    # Radius ladder for automatic expansion: e.g. 5km -> 10km -> 25km -> 45km
     current_radius = max(1.0, float(radius_km))
-    radius_ladder = [current_radius]
-    if current_radius < 15.0:
-        radius_ladder.append(min(current_radius * 2.0, 20.0))
-    if 25.0 not in radius_ladder and max(radius_ladder) < 25.0:
-        radius_ladder.append(25.0)
-    if 45.0 not in radius_ladder and max(radius_ladder) < 45.0:
-        radius_ladder.append(45.0)
-
     effective_radius_km = current_radius
     all_raw_elements: List[Dict[str, Any]] = []
     auto_expanded = False
 
-    for try_r in radius_ladder:
-        radius_meters = int(try_r * 1000)
-        query = _build_overpass_query(latitude, longitude, radius_meters)
-        logger.info("[OSM Safety] Executing OSM Overpass query for radius %d meters around (%.4f, %.4f)", radius_meters, latitude, longitude)
+    # In demo mode, bypass external OSM network calls to guarantee 0ms latency
+    if mode != "demo":
+        radius_ladder = [current_radius]
+        if current_radius < 15.0:
+            radius_ladder.append(min(current_radius * 2.0, 20.0))
 
-        elements = _query_overpass(query, timeout_sec=10)
-        if elements is not None:
-            all_raw_elements = elements
-            effective_radius_km = try_r
-            if try_r > current_radius:
-                auto_expanded = True
-                logger.info("[OSM Safety] Auto-increased search radius to %.1f km (returned %d facilities)", try_r, len(elements))
-            # If we found at least 3 elements, we have sufficient local data
-            if len(elements) >= 3:
+        for try_r in radius_ladder:
+            radius_meters = int(try_r * 1000)
+            query = _build_overpass_query(latitude, longitude, radius_meters)
+            logger.info("[OSM Safety] Executing OSM Overpass query for radius %d meters around (%.4f, %.4f)", radius_meters, latitude, longitude)
+
+            # Fast 3.5s timeout per request to avoid hanging the browser
+            elements = _query_overpass(query, timeout_sec=3.5)
+            if elements is not None:
+                all_raw_elements = elements
+                effective_radius_km = try_r
+                if try_r > current_radius:
+                    auto_expanded = True
+                    logger.info("[OSM Safety] Auto-increased search radius to %.1f km (returned %d facilities)", try_r, len(elements))
+                if len(elements) >= 3:
+                    break
+            else:
+                logger.warning("[OSM Safety] Overpass API query timed out or failed for radius %.1f km; aborting further ladder attempts to fast-fallback", try_r)
                 break
-        else:
-            logger.warning("[OSM Safety] Overpass API query returned None or failed for radius %.1f km", try_r)
 
     logger.info("[OSM Safety] Final raw OSM elements retrieved: %d", len(all_raw_elements))
 
@@ -773,6 +835,17 @@ def fetch_osm_safety_facilities(
 
         raw_name = tags.get("name") or tags.get("name:en") or tags.get("official_name")
         name = str(raw_name).strip() if raw_name else def_name
+
+        # Quality check: Filter out bogus or vandalized OSM nodes
+        # e.g., node 7595749526 in Surat, Gujarat named "New Delhi Safdarjung Hospital" with a fixme tag
+        fixme = str(tags.get("fixme", "")).lower()
+        if "safdarjung" in name.lower() and distance_metres({"latitude": el_lat, "longitude": el_lon}, {"latitude": 28.5684, "longitude": 77.2064}) > 100000:
+            logger.warning("[OSM Quality] Skipping geographically anomalous facility '%s' at (%.4f, %.4f)", name, el_lat, el_lon)
+            continue
+
+        if "really known as" in fixme or "fake" in fixme or "vandalism" in fixme:
+            logger.warning("[OSM Quality] Skipping questionable OSM element '%s' with fixme='%s'", name, fixme)
+            continue
 
         # Haversine distance calculation
         dist_m = distance_metres({"latitude": latitude, "longitude": longitude}, {"latitude": el_lat, "longitude": el_lon})
@@ -895,12 +968,13 @@ def find_nearest_safety_resources(
     latitude: float,
     longitude: float,
     max_radius_km: float = 35.0,
+    mode: str = "auto",
 ) -> Dict[str, Any]:
     """
     Finds the geographically nearest resource for each of the safety categories,
     backed by live OpenStreetMap Overpass data and district disaster management plans.
     """
-    osm_result = fetch_osm_safety_facilities(latitude, longitude, radius_km=min(max_radius_km, 15.0))
+    osm_result = fetch_osm_safety_facilities(latitude, longitude, radius_km=min(max_radius_km, 15.0), mode=mode)
     return osm_result.get("nearest_by_type", {})
 
 
