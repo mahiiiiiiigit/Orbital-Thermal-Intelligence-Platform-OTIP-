@@ -25,14 +25,17 @@ export function AlertMapPreview({ selectedAlert, allAlerts = [] }) {
         center: [lat, lon],
         zoom: 9,
         zoomControl: false,
-        attributionControl: false,
       });
 
-      const tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+      const mapTilerKey = import.meta.env.VITE_MAPTILER_KEY;
+      const tileUrl = `https://api.maptiler.com/maps/streets-v4-dark/{z}/{x}/{y}.png?key=${mapTilerKey || ''}`;
 
       tileLayerRef.current = L.tileLayer(tileUrl, {
         maxZoom: 18,
-        subdomains: 'abcd',
+        tileSize: 512,
+        zoomOffset: -1,
+        crossOrigin: true,
+        attribution: '&copy; <a href="https://www.maptiler.com/copyright/" target="_blank" rel="noopener">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>',
       }).addTo(map);
 
       L.control.zoom({ position: 'bottomright' }).addTo(map);
