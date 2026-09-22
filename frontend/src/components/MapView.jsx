@@ -131,9 +131,10 @@ export function MapView({
       map.removeLayer(baseTileLayerRef.current);
     }
 
-    const cartoKey = import.meta.env.VITE_CARTO_KEY || 'cb1_2jno_1_ef0c23ffe5f8a02710afad82';
     const tileSub = viewMode === 'light' ? 'light_all' : 'dark_all';
-    const tileUrl = `https://basemaps.cartocdn.com/${tileSub}/{z}/{x}/{y}.png?key=${cartoKey}`;
+    // CARTO's public raster basemaps do not require an application API key.
+    // Do not append a placeholder key: CARTO rejects it and blocks the map.
+    const tileUrl = `https://{s}.basemaps.cartocdn.com/${tileSub}/{z}/{x}/{y}{r}.png`;
 
     const newTileLayer = L.tileLayer(tileUrl, {
       attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; NASA FIRMS &copy; Forest Survey of India &copy; OpenRouteService',
