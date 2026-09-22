@@ -123,7 +123,7 @@ export function MapView({
     };
   }, []);
 
-  // 2. Manage Base Tile Layer (CARTO Dark or Light)
+  // 2. Manage Base Tile Layer (MapTiler Dark or Light)
   useEffect(() => {
     if (!map) return;
 
@@ -131,14 +131,16 @@ export function MapView({
       map.removeLayer(baseTileLayerRef.current);
     }
 
-    const cartoKey = import.meta.env.VITE_CARTO_KEY || 'cb1_2jno_1_ef0c23ffe5f8a02710afad82';
-    const tileSub = viewMode === 'light' ? 'light_all' : 'dark_all';
-    const tileUrl = `https://basemaps.cartocdn.com/${tileSub}/{z}/{x}/{y}.png?key=${cartoKey}`;
+    const mapTilerKey = import.meta.env.VITE_MAPTILER_KEY;
+    const mapStyle = viewMode === 'light' ? 'streets-v4' : 'streets-v4-dark';
+    const tileUrl = `https://api.maptiler.com/maps/${mapStyle}/{z}/{x}/{y}.png?key=${mapTilerKey || ''}`;
 
     const newTileLayer = L.tileLayer(tileUrl, {
-      attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; NASA FIRMS &copy; Forest Survey of India &copy; OpenRouteService',
+      attribution: '&copy; <a href="https://www.maptiler.com/copyright/" target="_blank" rel="noopener">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> &copy; NASA FIRMS &copy; Forest Survey of India &copy; OpenRouteService',
       maxZoom: 19,
-      subdomains: 'abcd',
+      tileSize: 512,
+      zoomOffset: -1,
+      crossOrigin: true,
     }).addTo(map);
 
     baseTileLayerRef.current = newTileLayer;

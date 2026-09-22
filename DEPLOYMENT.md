@@ -60,7 +60,7 @@ If `ml_model_available` is `false`, check that the model file was pushed to GitH
 VITE_API_BASE_URL=https://YOUR-RENDER-SERVICE.onrender.com
 ```
 
-Do not add private API keys as `VITE_*` variables: Vite embeds those values into browser JavaScript.
+Do not add private API keys as `VITE_*` variables: Vite embeds those values into browser JavaScript. `VITE_MAPTILER_KEY` is the exception for the browser-restricted, read-only map tile key.
 
 4. Deploy. Copy the Vercel URL.
 5. Return to Render and set `FRONTEND_ORIGIN` to that exact Vercel URL. Save it and redeploy the backend once.
