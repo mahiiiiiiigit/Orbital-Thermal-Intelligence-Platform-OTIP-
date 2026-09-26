@@ -81,47 +81,65 @@ export function Sidebar({
     );
   }
 
+  const isOffline = notice?.toLowerCase().includes('offline') || notice?.toLowerCase().includes('error');
+
   return (
     <aside className="w-72 md:w-80 bg-dark-950/95 border-r border-dark-800 flex flex-col h-full select-none overflow-hidden z-20 backdrop-blur-xl shadow-2xl transition-all duration-300">
-      
-      {/* Sidebar Header / Live Stream Status */}
-      <div className="h-12 px-3.5 border-b border-dark-800 flex items-center justify-between bg-dark-900/80">
-        <div className="flex items-center gap-2">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-          </span>
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-100 font-mono">
-            Spatial Intelligence
-          </span>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-bold">
-            STREAM ACTIVE
-          </span>
-          {onToggleCollapse && (
-            <button
-              type="button"
-              onClick={onToggleCollapse}
-              className="p-1 rounded text-slate-400 hover:text-white hover:bg-dark-800 transition-colors cursor-pointer"
-              title="Collapse sidebar"
-            >
-              <PanelLeftClose className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
         
-        {/* Stream Notice */}
-        {notice && (
-          <div className="bg-sky-500/10 border border-sky-500/25 rounded-xl p-2.5 flex items-start gap-2 text-xs text-sky-300 shadow-sm">
-            <Info className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
-            <p className="text-[11px] leading-tight font-medium">{notice}</p>
+        {/* Sidebar Header / Live Stream Status */}
+        <div className="h-12 px-3.5 border-b border-dark-800 flex items-center justify-between bg-dark-900/80">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                isOffline ? 'bg-amber-400' : 'bg-emerald-400'
+              }`}></span>
+              <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+                isOffline ? 'bg-amber-500' : 'bg-emerald-500'
+              }`}></span>
+            </span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-100 font-mono">
+              Spatial Intelligence
+            </span>
           </div>
-        )}
+
+          <div className="flex items-center gap-1.5">
+            <span className={`text-[9px] font-mono px-2 py-0.5 rounded border font-bold ${
+              isOffline 
+                ? 'text-amber-400 bg-amber-500/10 border-amber-500/20' 
+                : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+            }`}>
+              {isOffline ? 'OFFLINE DEMO' : 'STREAM ACTIVE'}
+            </span>
+            {onToggleCollapse && (
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                className="p-1 rounded text-slate-400 hover:text-white hover:bg-dark-800 transition-colors cursor-pointer"
+                title="Collapse sidebar"
+              >
+                <PanelLeftClose className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
+          
+          {/* Stream Notice */}
+          {notice && (
+            <div className={`border rounded-xl p-2.5 flex items-start gap-2 text-xs shadow-sm ${
+              isOffline 
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' 
+                : 'bg-sky-500/10 border-sky-500/25 text-sky-300'
+            }`}>
+              {isOffline ? (
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              ) : (
+                <Info className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+              )}
+              <p className="text-[11px] leading-tight font-medium">{notice}</p>
+            </div>
+          )}
 
         {/* 1. OVERVIEW TELEMETRY KPIS */}
         <div className="bg-dark-900/90 border border-dark-800 rounded-xl p-3.5 space-y-2.5 shadow-md">
